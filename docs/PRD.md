@@ -343,17 +343,20 @@ Ketika user gagal streak atau tidak aktif, app tidak menghukum secara berlebihan
 
 ### Description
 
-Profile card adalah kartu visual bergaya kartu karakter RPG yang dapat dibagikan oleh user, menampilkan Rank badge, Level, XP bar, Stat Radar Chart, dan **AI Avatar** hasil evolusi terbaru user.
+Profile card adalah kartu visual bergaya menu status karakter RPG full-body yang interaktif. Menampilkan Rank badge, Level, XP bar, Stat Radar Chart, dan **Full-Body AI Avatar** yang tumbuh secara fisik (seperti berotot/berjubah mage) menyesuaikan tingkat rank dan stat tertinggi user, serta merespon ketukan (tap) dan pergerakan sensor handphone.
 
 ### Requirements
 
 | ID              | Requirement                                                              | Priority    |
 | --------------- | ------------------------------------------------------------------------ | ----------- |
-| PRD-PROFILE-001 | User dapat melihat profil menu bergaya RPG (Status HUD)                  | Must Have   |
-| PRD-PROFILE-002 | Dashboard menampilkan AI Avatar ter-update dan grafik Stat Radar Chart   | Must Have   |
-| PRD-PROFILE-003 | User dapat memicu render Profile Card menjadi File Image via iOS         | Should Have |
-| PRD-PROFILE-004 | User dapat membagikan (share) image hasil render ke media sosial         | Should Have |
-| PRD-PROFILE-005 | User dapat melihat riwayat Trophy/Badge hasil boss fight di profil       | Should Have |
+| PRD-PROFILE-001 | User dapat melihat profil menu bergaya RPG (Status HUD) dengan layout full-body | Must Have   |
+| PRD-PROFILE-002 | Dashboard menampilkan Full-Body AI Avatar yang ter-update dan radar chart stats | Must Have   |
+| PRD-PROFILE-003 | Avatar merespon tap dengan chat bubble motivasi (Tap-to-Speak)           | Must Have   |
+| PRD-PROFILE-004 | Frame avatar memiliki efek gyroscope 3D parallax & SwiftUI particle system | Should Have |
+| PRD-PROFILE-005 | Avatar berubah secara fisik (evolusi gear & otot) berdasarkan stat tertinggi user | Must Have   |
+| PRD-PROFILE-006 | User dapat memicu render Profile Card menjadi File Image via iOS         | Should Have |
+| PRD-PROFILE-007 | User dapat membagikan (share) image hasil render ke media sosial         | Should Have |
+| PRD-PROFILE-008 | User dapat melihat riwayat Trophy/Badge hasil boss fight di profil       | Should Have |
 
 ---
 

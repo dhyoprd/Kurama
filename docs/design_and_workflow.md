@@ -196,18 +196,25 @@ graph TD
 1.  **Inisialisasi (Onboarding)**:
     *   User mengunggah foto wajah asli ke Supabase Storage (`original_selfie_url`).
     *   Aplikasi SwiftUI memicu Supabase Edge Function yang meneruskan foto tersebut ke AI Image Generation API (seperti Replicate SDXL / InstantID).
-    *   **AI Prompt**: *"An RPG game avatar portrait of a level 1 novice adventurer, stylized digital art, cyberpunk glows, dark background, matching facial structure of [original_selfie] and [life_class] style"*.
-    *   Hasil olahan disimpan di `profiles.avatar_url` dan ditampilkan di Dashboard SwiftUI.
-2.  **Evolusi Avatar (Rank-Up Trigger)**:
-    *   Ketika user naik Rank (misal dari E Rank ke D Rank), sistem mendeteksi perubahan rank.
-    *   Pemicu ini memanggil Supabase Edge Function untuk men-generate ulang avatar baru berdasarkan foto wajah awal dengan prompt peralatan/armor yang disesuaikan dengan Rank dan Stat tertinggi user.
-    *   **Daftar Evolusi Prompt**:
-        *   **E-Rank (Level 1-10)**: *"A level 1 novice adventurer avatar portrait, basic leather vest, simple background"*
-        *   **D-Rank (Level 11-20)**: *"A level 15 intermediate fighter avatar portrait, reinforced iron shoulder plates, slight neon aura"*
-        *   **C-Rank (Level 21-35)**: *"A level 30 elite knight/scholar avatar portrait, glowing magical runic chestplate, bright energy wisps"*
-        *   **B-Rank (Level 36-50)**: *"A level 45 master warrior avatar portrait, mystical steel plate armor, elemental fire/ice shield, strong glowing background"*
-        *   **A-Rank (Level 51-75)**: *"A level 65 grandmaster avatar portrait, legendary crystal armor, floating energy artifacts, intense neon aura"*
-        *   **S-Rank (Level 76+)**: *"A level 99 shadow monarch avatar portrait, divine armor, massive glowing wings, shadow energy aura, legendary weapon"*
+    *   **AI Prompt (Full-Body & Standing Pose)**: *"A full-body standing portrait of an RPG game character, level 1 novice adventurer, [life_class] style, matching facial features of [original_selfie], simple gear, standing pose, cyberpunk neon highlights, dark background, 8k resolution"*.
+    *   Hasil olahan disimpan di `profiles.avatar_url` dan ditampilkan secara interaktif di Dashboard SwiftUI.
+2.  **Mekanisme Interaktivitas Avatar (SwiftUI)**:
+    *   **Tap to Speak**: Jika user melakukan tap pada tubuh avatar di layar, avatar akan memunculkan bubble chat text berisi pesan motivasi acak atau saran latihan yang disesuaikan dengan status stat terlemah user saat ini.
+    *   **Gyroscope Parallax Effect**: Menggunakan sensor gyroscope iPhone (`CoreMotion` framework) untuk menggeser sudut pandang gambar full-body avatar dan bingkainya secara 3D (parallax effect) saat iPhone dimiringkan.
+    *   **Dynamic Particles Background**: Latar belakang avatar dirender dengan partikel SwiftUI dinamis yang menyala (contoh: partikel bara api untuk Warrior, baris kode digital untuk Builder, hembusan angin tenang untuk Monk) yang bergerak lebih cepat seiring dengan tingginya level user.
+3.  **Evolusi & Pertumbuhan Fisik Berdasarkan Stats (Rank-Up Trigger)**:
+    *   Ketika user naik Rank (E -> D -> C -> dst.), sistem memicu rendering ulang avatar baru dengan AI.
+    *   **Pertumbuhan Fisik & Gear disesuaikan dengan Stat Tertinggi User**:
+        *   Jika stat tertinggi adalah **Strength** (Warrior/Fisik): Tubuh avatar berevolusi menjadi lebih berotot, tegap, atletis, dan mengenakan baju pelindung berat/armor tempur besi.
+        *   Jika stat tertinggi adalah **Intelligence / Mind** (Scholar/Monk): Avatar memiliki jubah mage yang bercahaya, memegang buku kuno terapung, dan memiliki aura energi biru/putih di sekeliling tubuhnya.
+        *   Jika stat tertinggi adalah **Wealth / Charisma** (Strategist/Builder): Avatar mengenakan jubah kepemimpinan bergaya techno-nobility, memegang senjata/alat canggih (cyber-sword/tablet), dan latar belakang bernuansa emas neon.
+    *   **Daftar Evolusi Prompt (Full-Body)**:
+        *   **E-Rank (Level 1-10)**: *"A full-body standing RPG character, level 1 novice adventurer, simple leather armor, standing pose, basic background"*
+        *   **D-Rank (Level 11-20)**: *"A full-body standing RPG character, level 15 warrior/scholar, iron gear, athletic body build, slight neon aura, standing pose"*
+        *   **C-Rank (Level 21-35)**: *"A full-body standing RPG character, level 30 elite tier, magical chestplate or techno-robes, muscular/defined build, floating energy particles, standing pose"*
+        *   **B-Rank (Level 36-50)**: *"A full-body standing RPG character, level 45 master, glowing runic armor, weapon in hand, glowing eyes, intense aura background, standing pose"*
+        *   **A-Rank (Level 51-75)**: *"A full-body standing RPG character, level 65 grandmaster, legendary heavy crystal armor, levitating magical artifacts, powerful aura, standing pose"*
+        *   **S-Rank (Level 76+)**: *"A full-body standing RPG character, level 99 shadow monarch style, divine glowing armor, massive neon energy wings, floating weapon, legendary aura, standing pose"*
     *   User akan melihat layar transisi dramatis di iOS (dengan animasi SwiftUI) yang me-reveal tampilan avatar barunya begitu render selesai. User juga bisa men-share card evolusi ini.
 
 ### F. Sistem Membaca Buku (In-App Reader & Focus Timer)
@@ -236,7 +243,7 @@ Aplikasi menggunakan **Dark-RPG / Cyberpunk Theme** dengan warna dasar gelap pek
 ### Struktur Navigasi (iOS TabView)
 1.  **Character Dashboard (Tab 1)**:
     *   **Header**: Nama user, Level, Rank badge (desain lencana neon), dan Streak Counter (ikon api berkobar).
-    *   **AI Avatar Frame**: Frame foto avatar RPG dinamis yang berevolusi sesuai Rank. Diberi efek glowing border sesuai tingkatan Rank (contoh: S-Rank memiliki pendaran aura ungu gelap).
+    *   **Interactive Full-Body Avatar Card**: Penempatan gambar berdiri utuh (full-body) karakter RPG pengguna. Dilengkapi interaksi ketukan (Tap-to-Speak) yang memunculkan ucapan motivasi, efek kemiringan 3D gyroscope parallax saat iPhone digerakkan, dan SwiftUI Particle System (bara api/matrix rain/magical aura) di latar belakang avatar.
     *   **XP Progress Bar**: Bar horizontal berkilau dengan animasi gradasi.
     *   **Stats Radar Chart**: Polygon grafik 6 sudut yang digambar kustom menggunakan SwiftUI `Path` untuk memvisualisasikan `Strength`, `Intelligence`, `Discipline`, `Charisma`, `Wealth`, dan `Mind`.
     *   **Quick Daily Quests**: Daftar 3 quest aktif hari ini bergaya kartu gulungan misi (quest scrolls).

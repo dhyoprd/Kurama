@@ -188,14 +188,16 @@ so that I can see my growth over time.
 ### US-011 — Rank Up
 
 **As a user,**
-I want to rank up after reaching certain levels,
-so that my long-term progress feels meaningful.
+I want to rank up and see my full-body AI avatar evolve,
+so that I get a visual sense of my character's growth and stats progression.
 
 **Acceptance Criteria**
 
-* Given user mencapai level tertentu, then rank user berubah.
-* Given user rank up, then sistem menampilkan rank-up animation/message.
-* Given user rank up, then profile card diperbarui.
+* Given user mencapai level tertentu, then rank user bertambah (E -> D -> C -> B -> A -> S).
+* Given rank bertambah, then sistem mendeteksi stat tertinggi user dan memicu Supabase Edge Function untuk me-render ulang full-body avatar baru dengan armor/gear yang sesuai.
+* Given render selesai, then sistem menampilkan animasi dramatis transisi rank up di iOS.
+* Given rank up berhasil, then dashboard memperbarui tampilan full-body avatar baru, warna glowing border, efek partikel, dan chat bubble motivasi baru.
+* Given rank up berhasil, then profile card diperbarui secara otomatis.
 
 ---
 

@@ -63,11 +63,15 @@ Berikut adalah wireframe layout halaman-halaman kunci menggunakan diagram kotak 
 +------------------------------------------+
 |  [Fire] 14 Days Streak         [Settings]|
 |                                          |
-|  +----------+   NAME: JinWoo             |
-|  |    AI    |   LEVEL: 14                |
-|  |  AVATAR  |   RANK: D-Rank             |
-|  |  PORTRAIT|   CLASS: Warrior           |
-|  +----------+                            |
+|  +------------------------------------+  |
+|  |           AI AVATAR CARD           |  |
+|  |            (FULL-BODY)             |  |
+|  |                                    |  |
+|  |     [ "Keep moving forward!" ]     |  |
+|  |       (Bubble chat on tap)         |  |
+|  +------------------------------------+  |
+|  NAME: JinWoo  |  LVL: 14  | D-Rank      |
+|  CLASS: Warrior (Parallax/Particles UI)  |
 |  [========== XP: 1420 / 1500 ==========] |
 |                                          |
 |            STAT RADAR CHART              |
@@ -128,14 +132,21 @@ sequenceDiagram
     Note over User, AI: 1. Alur Pembuatan Avatar Awal (Onboarding)
     User->>App: Input Tinggi, Berat & Upload Foto Selfie
     App->>DB: Simpan Foto ke Storage bucket 'selfies'
-    App->>AI: Panggil API Generator dengan parameters (Selfie, Class, Physical Data)
-    Note over AI: AI memproses wajah + prompt RPG Level 1
-    AI-->>App: Return URL Avatar Level 1 Novice
+    App->>AI: Panggil API Generator (Selfie, Class, Height/Weight)
+    Note over AI: AI memproses wajah + prompt Full-Body Novice Level 1
+    AI-->>App: Return URL Full-Body Avatar Level 1
     App->>DB: Update 'avatar_url' di tabel profiles
-    App->>User: Buka Dashboard & Tampilkan Avatar Level 1
+    App->>User: Tampilkan Full-Body Avatar Level 1 dengan particle effects
+
+    %% INTERACTIVE AVATAR FEATURES
+    Note over User, App: 2. Alur Interaksi Avatar di Dashboard
+    User->>App: Tap pada bagian tubuh Avatar
+    App->>User: Tampilkan bubble chat berisi saran/motivasi sesuai stat terlemah
+    User->>App: Miringkan iPhone (Gyroscope sensor trigger)
+    App->>App: Update sudut pandang 3D parallax background avatar secara real-time
 
     %% FOCUS READING FLOW WITH ANTI-IDLE
-    Note over User, AI: 2. Alur Membaca Buku 10 Menit & Rule Anti-Idle
+    Note over User, AI: 3. Alur Membaca Buku 10 Menit & Rule Anti-Idle
     User->>App: Buka menu Library & Pilih Buku
     User->>App: Tekan "Start Reading Session"
     App->>App: Jalankan Mode Layar Penuh & 10-Minute Focus Timer
@@ -155,11 +166,12 @@ sequenceDiagram
     App->>User: Animasi Klaim XP + Peningkatan Stat Intelligence/Mind
 
     %% AVATAR EVOLUTION ON RANK UP
-    Note over User, AI: 3. Alur Rank-Up & Evolusi Avatar AI
-    Note over App: Level bertambah & Memicu Rank Up (misal ke D-Rank)
-    App->>AI: Panggil API Re-generation (Original Selfie + Prompt Rank D Armor)
-    Note over AI: AI me-render ulang wajah user dengan baju armor besi/D-Rank
-    AI-->>App: Return URL Evolved Avatar baru
+    Note over User, AI: 4. Alur Rank-Up & Evolusi Avatar AI
+    Note over App: Level bertambah & Memicu Rank Up (E -> D)
+    App->>DB: Cek status stat tertinggi (misal: Strength)
+    App->>AI: Panggil API Re-generation (Selfie + Prompt Warrior Iron Armor + Muscular Build)
+    Note over AI: AI merender ulang full-body user dengan armor Warrior Rank D tegap
+    AI-->>App: Return URL Evolved Full-Body Avatar baru
     App->>DB: Update 'avatar_url' terbaru
-    App->>User: Animasi Rank Up + Reveal Avatar Baru dengan Glowing Purple Border!
+    App->>User: Animasi Rank Up + Reveal Evolved Avatar Baru dengan Neon Border!
 ```
