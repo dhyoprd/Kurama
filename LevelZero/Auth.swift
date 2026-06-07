@@ -7,16 +7,19 @@ struct RootGate: View {
 
     var body: some View {
         Group {
-            if supa.isAuthenticated {
-                TabViewShell()
-            } else {
+            if !supa.isAuthenticated {
                 AuthView()
+            } else if !supa.hasProfile {
+                OnboardingView()
+            } else {
+                TabViewShell()
             }
         }
         .preferredColorScheme(.dark)
         .task {
             supa.observeAuth()
             await supa.refreshSession()
+            await supa.loadProfileStatus()
         }
     }
 }
