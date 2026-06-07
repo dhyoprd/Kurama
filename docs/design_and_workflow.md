@@ -161,8 +161,8 @@ graph TD
         *   **B-Rank (Sulit)**: 250 XP & +5 Stats
         *   **A-Rank (Sangat Sulit)**: 400 XP & +8 Stats
 3.  **Mekanisme Level Up & Rank Up**:
-    *   Setiap naik level, threshold XP dihitung dengan rumus: `XP_Next_Level = Level * 100`.
-    *   Ketika total XP mencapai threshold, status `level` bertambah 1.
+    *   Kolom `profiles.xp` menyimpan **progress XP di dalam level saat ini** (bukan total seumur hidup). Threshold untuk naik dari level `L` ke `L+1` dihitung dengan rumus: `XP_Next_Level = Level * 100`.
+    *   Saat quest selesai: `xp += reward`, lalu selama `xp >= level*100` jalankan `xp -= level*100; level += 1` (satu perolehan XP besar dapat melompati beberapa level sekaligus). XP bar di dashboard = `xp / (level*100)`.
     *   Sistem memeriksa `level` saat ini untuk menentukan kenaikan `rank`:
         *   **E Rank**: Level 1–10
         *   **D Rank**: Level 11–20
