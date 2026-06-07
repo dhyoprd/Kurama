@@ -1,0 +1,19 @@
+# Level Zero Gitignore
+
+# Xcode project files
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/
+*.xcworkspace/
+LevelZero.xcodeproj/
+
+# Supabase secret config
+LevelZero/SupabaseConfig.plist
+
+# macOS files
+.DS_Store
+
+# Build folders
+build/
+DerivedData/
+.build/

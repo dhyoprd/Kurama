@@ -1,0 +1,41 @@
+name: LevelZero
+options:
+  bundleIdPrefix: com.vibecode.levelzero
+  deploymentTarget:
+    iOS: "16.0"
+
+packages:
+  SupabaseSwift:
+    url: https://github.com/supabase-community/supabase-swift.git
+    from: 2.22.0
+  LevelZeroCore:
+    path: LevelZeroCore
+
+targets:
+  LevelZero:
+    type: application
+    platform: iOS
+    sources:
+      - path: LevelZero
+    dependencies:
+      - package: SupabaseSwift
+        product: Supabase
+      - package: LevelZeroCore
+        product: LevelZeroCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.vibecode.levelzero
+        DEVELOPMENT_TEAM: ""
+
+  LevelZeroTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: LevelZeroTests
+    dependencies:
+      - target: LevelZero
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
