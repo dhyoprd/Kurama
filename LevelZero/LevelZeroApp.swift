@@ -4,8 +4,7 @@ import SwiftUI
 struct LevelZeroApp: App {
     var body: some Scene {
         WindowGroup {
-            TabViewShell()
-                .preferredColorScheme(.dark)
+            RootGate()
         }
     }
 }

@@ -8,6 +8,7 @@ class SupabaseManager: ObservableObject {
     @Published var isConnected = false
     @Published var connectionMessage = "Not checked"
     @Published var isChecking = false
+    @Published var isAuthenticated = false
     
     private init() {
         if let url = Config.supabaseURL, let key = Config.supabaseAnonKey, !key.isEmpty, !key.contains("your-anon-public-key") {
@@ -52,5 +53,47 @@ class SupabaseManager: ObservableObject {
                 self.isChecking = false
             }
         }
+    }
+
+    // MARK: - Auth (#3)
+
+    enum AuthError: Error { case notConfigured }
+
+    /// Observe Supabase auth state -> drives routing.
+    func observeAuth() {
+        guard let client else { return }
+        Task {
+            for await (_, session) in client.auth.authStateChanges {
+                await MainActor.run { self.isAuthenticated = session != nil }
+            }
+        }
+    }
+
+    /// Refresh the persisted session on launch.
+    func refreshSession() async {
+        guard let client else { return }
+        let session = try? await client.auth.session
+        await MainActor.run { self.isAuthenticated = session != nil }
+    }
+
+    /// Returns true if signed up AND logged in; false if email confirmation is required.
+    @discardableResult
+    func signUp(email: String, password: String) async throws -> Bool {
+        guard let client else { throw AuthError.notConfigured }
+        let response = try await client.auth.signUp(email: email, password: password)
+        switch response {
+        case .session: return true
+        case .user: return false
+        }
+    }
+
+    func signIn(email: String, password: String) async throws {
+        guard let client else { throw AuthError.notConfigured }
+        _ = try await client.auth.signIn(email: email, password: password)
+    }
+
+    func signOut() async throws {
+        guard let client else { throw AuthError.notConfigured }
+        try await client.auth.signOut()
     }
 }
