@@ -1,10 +1,10 @@
 // Shared quest-domain types.
 
-public enum LifeClass: Equatable, Sendable {
+public enum LifeClass: String, CaseIterable, Equatable, Sendable {
     case warrior, scholar, builder, monk, strategist
 }
 
-public enum Intensity: Equatable, Sendable {
+public enum Intensity: String, CaseIterable, Equatable, Sendable {
     case easy, normal, hard
 }
 

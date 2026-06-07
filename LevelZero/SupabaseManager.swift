@@ -1,5 +1,6 @@
 import Foundation
 import Supabase
+import LevelZeroCore
 
 class SupabaseManager: ObservableObject {
     static let shared = SupabaseManager()
@@ -9,6 +10,7 @@ class SupabaseManager: ObservableObject {
     @Published var connectionMessage = "Not checked"
     @Published var isChecking = false
     @Published var isAuthenticated = false
+    @Published var hasProfile = false
     
     private init() {
         if let url = Config.supabaseURL, let key = Config.supabaseAnonKey, !key.isEmpty, !key.contains("your-anon-public-key") {
@@ -64,7 +66,13 @@ class SupabaseManager: ObservableObject {
         guard let client else { return }
         Task {
             for await (_, session) in client.auth.authStateChanges {
-                await MainActor.run { self.isAuthenticated = session != nil }
+                let authed = session != nil
+                await MainActor.run { self.isAuthenticated = authed }
+                if authed {
+                    await loadProfileStatus()
+                } else {
+                    await MainActor.run { self.hasProfile = false }
+                }
             }
         }
     }
@@ -95,5 +103,56 @@ class SupabaseManager: ObservableObject {
     func signOut() async throws {
         guard let client else { throw AuthError.notConfigured }
         try await client.auth.signOut()
+    }
+
+    // MARK: - Profile (#4)
+
+    private struct ProfileIDRow: Decodable { let id: UUID }
+
+    private struct ProfileInsert: Encodable {
+        let id: String
+        let username: String
+        let life_class: String
+        let intensity: String
+        let main_goals: [String]
+        let height: Double
+        let weight: Double
+    }
+
+    /// Whether the signed-in user already has a profile row (drives routing onboarding vs dashboard).
+    func loadProfileStatus() async {
+        guard let client else { return }
+        guard let uid = try? await client.auth.session.user.id else {
+            await MainActor.run { self.hasProfile = false }
+            return
+        }
+        do {
+            let rows: [ProfileIDRow] = try await client
+                .from("profiles")
+                .select("id")
+                .eq("id", value: uid.uuidString)
+                .execute()
+                .value
+            await MainActor.run { self.hasProfile = !rows.isEmpty }
+        } catch {
+            await MainActor.run { self.hasProfile = false }
+        }
+    }
+
+    /// Insert the profile row from a validated onboarding draft.
+    func createProfile(from draft: OnboardingDraft) async throws {
+        guard let client else { throw AuthError.notConfigured }
+        let uid = try await client.auth.session.user.id
+        let payload = ProfileInsert(
+            id: uid.uuidString,
+            username: draft.characterName.trimmingCharacters(in: .whitespacesAndNewlines),
+            life_class: draft.lifeClass?.dbValue ?? "warrior",
+            intensity: draft.intensity.dbValue,
+            main_goals: draft.goals.map(\.dbValue),
+            height: draft.heightCm ?? 0,
+            weight: draft.weightKg ?? 0
+        )
+        try await client.from("profiles").insert(payload).execute()
+        await MainActor.run { self.hasProfile = true }
     }
 }
