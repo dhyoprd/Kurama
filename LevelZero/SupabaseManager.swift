@@ -11,6 +11,9 @@ class SupabaseManager: ObservableObject {
     @Published var isChecking = false
     @Published var isAuthenticated = false
     @Published var hasProfile = false
+    @Published var needsAvatar = false
+    @Published var lifeClass: LifeClass?
+    @Published var avatarURL: URL?
     
     private init() {
         if let url = Config.supabaseURL, let key = Config.supabaseAnonKey, !key.isEmpty, !key.contains("your-anon-public-key") {
@@ -107,7 +110,11 @@ class SupabaseManager: ObservableObject {
 
     // MARK: - Profile (#4)
 
-    private struct ProfileIDRow: Decodable { let id: UUID }
+    private struct ProfileStatusRow: Decodable {
+        let id: UUID
+        let avatar_url: String?
+        let life_class: String
+    }
 
     private struct ProfileInsert: Encodable {
         let id: String
@@ -119,23 +126,29 @@ class SupabaseManager: ObservableObject {
         let weight: Double
     }
 
-    /// Whether the signed-in user already has a profile row (drives routing onboarding vs dashboard).
+    /// Loads profile existence + avatar status -> drives routing (onboarding / avatar / dashboard).
     func loadProfileStatus() async {
         guard let client else { return }
         guard let uid = try? await client.auth.session.user.id else {
-            await MainActor.run { self.hasProfile = false }
+            await MainActor.run { self.hasProfile = false; self.needsAvatar = false }
             return
         }
         do {
-            let rows: [ProfileIDRow] = try await client
+            let rows: [ProfileStatusRow] = try await client
                 .from("profiles")
-                .select("id")
+                .select("id,avatar_url,life_class")
                 .eq("id", value: uid.uuidString)
                 .execute()
                 .value
-            await MainActor.run { self.hasProfile = !rows.isEmpty }
+            let row = rows.first
+            await MainActor.run {
+                self.hasProfile = row != nil
+                self.needsAvatar = row != nil && row?.avatar_url == nil
+                self.lifeClass = row.flatMap { LifeClass(rawValue: $0.life_class) }
+                self.avatarURL = row?.avatar_url.flatMap { URL(string: $0) }
+            }
         } catch {
-            await MainActor.run { self.hasProfile = false }
+            await MainActor.run { self.hasProfile = false; self.needsAvatar = false }
         }
     }
 
@@ -153,6 +166,42 @@ class SupabaseManager: ObservableObject {
             weight: draft.weightKg ?? 0
         )
         try await client.from("profiles").insert(payload).execute()
-        await MainActor.run { self.hasProfile = true }
+        await MainActor.run {
+            self.hasProfile = true
+            self.needsAvatar = true
+            self.lifeClass = draft.lifeClass
+        }
+    }
+
+    // MARK: - Avatar (#5)
+
+    func uploadSelfie(_ data: Data) async throws {
+        guard let client else { throw AuthError.notConfigured }
+        let uid = try await client.auth.session.user.id
+        let path = "\(uid.uuidString).jpg"
+        try await client.storage.from("selfies").upload(
+            path, data: data,
+            options: FileOptions(contentType: "image/jpeg", upsert: true)
+        )
+        try await client.from("profiles")
+            .update(["original_selfie_url": path])
+            .eq("id", value: uid.uuidString)
+            .execute()
+    }
+
+    /// Invoke the generate-avatar Edge Function, then refresh (avatar_url -> needsAvatar false).
+    func generateAvatar(prompt: String) async throws {
+        guard let client else { throw AuthError.notConfigured }
+        struct Body: Encodable { let prompt: String }
+        try await client.functions.invoke(
+            "generate-avatar",
+            options: FunctionInvokeOptions(body: Body(prompt: prompt))
+        )
+        await loadProfileStatus()
+    }
+
+    /// Proceed without an avatar (failure path must not block the app).
+    func skipAvatar() {
+        Task { @MainActor in self.needsAvatar = false }
     }
 }

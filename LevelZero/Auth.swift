@@ -11,6 +11,8 @@ struct RootGate: View {
                 AuthView()
             } else if !supa.hasProfile {
                 OnboardingView()
+            } else if supa.needsAvatar {
+                AvatarGenView()
             } else {
                 TabViewShell()
             }

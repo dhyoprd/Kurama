@@ -29,6 +29,24 @@ public enum AvatarPromptSelector {
         }
     }
 
+    /// The stat that defines a life class's initial archetype (used at Level 1
+    /// when all stats are equal). Warrior->strength, Scholar->intelligence,
+    /// Monk->mind, Builder->wealth, Strategist->charisma.
+    public static func signatureStat(for lifeClass: LifeClass) -> Stat {
+        switch lifeClass {
+        case .warrior:    return .strength
+        case .scholar:    return .intelligence
+        case .monk:       return .mind
+        case .builder:    return .wealth
+        case .strategist: return .charisma
+        }
+    }
+
+    /// Full-body prompt keyed off a life class (its signature stat).
+    public static func prompt(rank: Rank, lifeClass: LifeClass) -> String {
+        prompt(rank: rank, topStat: signatureStat(for: lifeClass))
+    }
+
     /// Full-body prompt for a given rank tier and top stat.
     public static func prompt(rank: Rank, topStat: Stat) -> String {
         let body = "A full-body standing RPG character portrait"
