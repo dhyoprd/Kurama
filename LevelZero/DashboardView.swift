@@ -10,14 +10,17 @@ struct DashboardView: View {
     @State private var tiltOffset: CGFloat = 0
     
     // Stats mapping from LevelZeroCore
-    let stats = [
-        ("STR", 45),
-        ("INT", 18),
-        ("DIS", 30),
-        ("CHA", 25),
-        ("WEA", 12),
-        ("MND", 28)
-    ]
+    // Real stats from the profile (#8), in canonical order.
+    private var stats: [(String, Int)] {
+        [
+            ("STR", supabase.stats["strength"] ?? 10),
+            ("INT", supabase.stats["intelligence"] ?? 10),
+            ("DIS", supabase.stats["discipline"] ?? 10),
+            ("CHA", supabase.stats["charisma"] ?? 10),
+            ("WEA", supabase.stats["wealth"] ?? 10),
+            ("MND", supabase.stats["mind"] ?? 10),
+        ]
+    }
 
     private var xpFraction: CGFloat {
         let denom = max(supabase.level * 100, 1)
