@@ -3,8 +3,8 @@
 //   Attaching proof adds +20 XP (stat unchanged). S-rank is reserved for the
 //   weekly boss and handled by WeeklyBossLifecycle, so it is not a Difficulty here.
 
-public enum Difficulty: Equatable, Hashable, Sendable {
-    case e, d, c, b, a
+public enum Difficulty: String, Equatable, Hashable, Sendable {
+    case e = "E", d = "D", c = "C", b = "B", a = "A"
 }
 
 public struct QuestReward: Equatable, Sendable {

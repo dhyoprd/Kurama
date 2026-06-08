@@ -14,6 +14,8 @@ class SupabaseManager: ObservableObject {
     @Published var needsAvatar = false
     @Published var lifeClass: LifeClass?
     @Published var avatarURL: URL?
+    @Published var intensity: Intensity = .normal
+    @Published var todaysQuests: [DailyQuestVM] = []
     
     private init() {
         if let url = Config.supabaseURL, let key = Config.supabaseAnonKey, !key.isEmpty, !key.contains("your-anon-public-key") {
@@ -114,6 +116,7 @@ class SupabaseManager: ObservableObject {
         let id: UUID
         let avatar_url: String?
         let life_class: String
+        let intensity: String
     }
 
     private struct ProfileInsert: Encodable {
@@ -136,7 +139,7 @@ class SupabaseManager: ObservableObject {
         do {
             let rows: [ProfileStatusRow] = try await client
                 .from("profiles")
-                .select("id,avatar_url,life_class")
+                .select("id,avatar_url,life_class,intensity")
                 .eq("id", value: uid.uuidString)
                 .execute()
                 .value
@@ -145,6 +148,7 @@ class SupabaseManager: ObservableObject {
                 self.hasProfile = row != nil
                 self.needsAvatar = row != nil && row?.avatar_url == nil
                 self.lifeClass = row.flatMap { LifeClass(rawValue: $0.life_class) }
+                self.intensity = row.flatMap { Intensity(rawValue: $0.intensity) } ?? .normal
                 self.avatarURL = row?.avatar_url.flatMap { URL(string: $0) }
             }
         } catch {
@@ -203,5 +207,111 @@ class SupabaseManager: ObservableObject {
     /// Proceed without an avatar (failure path must not block the app).
     func skipAvatar() {
         Task { @MainActor in self.needsAvatar = false }
+    }
+
+    // MARK: - Daily quests (#6)
+
+    struct DailyQuestVM: Identifiable, Equatable {
+        let id: UUID
+        let title: String
+        let difficulty: String
+    }
+
+    private struct QuestPoolRow: Decodable {
+        let id: UUID
+        let difficulty: String
+        let life_class: String?
+    }
+    private struct QuestTitleRow: Decodable {
+        let title: String
+        let difficulty: String
+    }
+    private struct TodayQuestRow: Decodable {
+        let id: UUID
+        let status: String
+        let custom_title: String?
+        let quests: QuestTitleRow?
+    }
+    private struct UserQuestInsert: Encodable {
+        let user_id: String
+        let quest_id: String
+        let assigned_date: String
+        let status: String
+    }
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    /// Loads today's quests; assigns 3 (idempotent per day) if none exist yet.
+    func loadOrAssignTodaysQuests() async {
+        guard let client else { return }
+        guard let uid = try? await client.auth.session.user.id else { return }
+        let today = Self.dayFormatter.string(from: Date())
+        do {
+            var rows = try await fetchTodayQuests(client, uid: uid, today: today)
+            if rows.isEmpty {
+                try await assignTodayQuests(client, uid: uid, today: today)
+                rows = try await fetchTodayQuests(client, uid: uid, today: today)
+            }
+            let vms = rows.map {
+                DailyQuestVM(
+                    id: $0.id,
+                    title: $0.quests?.title ?? $0.custom_title ?? "Quest",
+                    difficulty: $0.quests?.difficulty ?? "E"
+                )
+            }
+            await MainActor.run { self.todaysQuests = vms }
+        } catch {
+            await MainActor.run { self.todaysQuests = [] }
+        }
+    }
+
+    private func fetchTodayQuests(_ client: SupabaseClient, uid: UUID, today: String) async throws -> [TodayQuestRow] {
+        try await client
+            .from("user_quests")
+            .select("id,status,custom_title,quests(title,difficulty)")
+            .eq("user_id", value: uid.uuidString)
+            .eq("assigned_date", value: today)
+            .execute()
+            .value
+    }
+
+    private func assignTodayQuests(_ client: SupabaseClient, uid: UUID, today: String) async throws {
+        let poolRows: [QuestPoolRow] = try await client
+            .from("quests").select("id,difficulty,life_class").execute().value
+        let pool: [Quest] = poolRows.compactMap { row in
+            guard let diff = Difficulty(rawValue: row.difficulty) else { return nil }
+            return Quest(
+                id: row.id.uuidString,
+                lifeClass: row.life_class.flatMap { LifeClass(rawValue: $0) },
+                difficulty: diff
+            )
+        }
+        var rng = SeededRandomNumberGenerator(seed: Self.seed(uid: uid, day: today))
+        let chosen = DailyQuestAssigner.assign(
+            lifeClass: lifeClass ?? .warrior,
+            intensity: intensity,
+            alreadyAssignedToday: false,
+            pool: pool,
+            using: &rng
+        )
+        guard !chosen.isEmpty else { return }
+        let inserts = chosen.map {
+            UserQuestInsert(user_id: uid.uuidString, quest_id: $0.id, assigned_date: today, status: "active")
+        }
+        try await client.from("user_quests").insert(inserts).execute()
+    }
+
+    private static func seed(uid: UUID, day: String) -> UInt64 {
+        var hash: UInt64 = 1469598103934665603
+        for byte in (uid.uuidString + day).utf8 {
+            hash = (hash ^ UInt64(byte)) &* 1099511628211
+        }
+        return hash
     }
 }
