@@ -388,16 +388,19 @@ struct DashboardView: View {
     }
 
     private func triggerDialogue() {
-        let dialogues = [
-            "Your current focus is STR. Keep pushing your body!",
-            "Daily quests grant up to +50 XP. Complete them to rank up.",
-            "Make sure to read for 10 minutes in the Library to raise INT.",
-            "Boss challenge is waiting in the raid room. Clear it this week!",
-            "Hunter, remember to rest if your energy gets too low."
-        ]
-        dialogueText = dialogues.randomElement() ?? ""
+        // Tap-to-speak (#18): line targeted at the user's weakest stat.
+        var rng = SystemRandomNumberGenerator()
+        let s = Stats(
+            strength: supabase.stats["strength"] ?? 10,
+            intelligence: supabase.stats["intelligence"] ?? 10,
+            discipline: supabase.stats["discipline"] ?? 10,
+            charisma: supabase.stats["charisma"] ?? 10,
+            wealth: supabase.stats["wealth"] ?? 10,
+            mind: supabase.stats["mind"] ?? 10
+        )
+        dialogueText = AvatarDialogueSelector.line(for: s, using: &rng)
         showingDialogue = true
-        
+
         // Hide after 4 seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
             showingDialogue = false
