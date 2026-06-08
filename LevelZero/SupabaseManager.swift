@@ -23,6 +23,9 @@ class SupabaseManager: ObservableObject {
     @Published var rewardFlash: String?
     @Published var boss: BossVM?
     @Published var books: [BookVM] = []
+    @Published var streak = 0
+    @Published var needsRecovery = false
+    @Published var lastActiveAt: Date?
     
     private init() {
         if let url = Config.supabaseURL, let key = Config.supabaseAnonKey, !key.isEmpty, !key.contains("your-anon-public-key") {
@@ -133,6 +136,8 @@ class SupabaseManager: ObservableObject {
         let charisma: Int
         let wealth: Int
         let mind: Int
+        let last_active_at: String?
+        let current_streak: Int
     }
 
     private struct ProfileInsert: Encodable {
@@ -155,7 +160,7 @@ class SupabaseManager: ObservableObject {
         do {
             let rows: [ProfileStatusRow] = try await client
                 .from("profiles")
-                .select("id,avatar_url,life_class,intensity,level,xp,rank,strength,intelligence,discipline,charisma,wealth,mind")
+                .select("id,avatar_url,life_class,intensity,level,xp,rank,strength,intelligence,discipline,charisma,wealth,mind,last_active_at,current_streak")
                 .eq("id", value: uid.uuidString)
                 .execute()
                 .value
@@ -174,6 +179,8 @@ class SupabaseManager: ObservableObject {
                      "discipline": $0.discipline, "charisma": $0.charisma,
                      "wealth": $0.wealth, "mind": $0.mind]
                 } ?? [:]
+                self.streak = row?.current_streak ?? 0
+                self.lastActiveAt = row?.last_active_at.flatMap { Self.parseTimestamp($0) }
             }
         } catch {
             await MainActor.run { self.hasProfile = false; self.needsAvatar = false }
@@ -609,6 +616,67 @@ class SupabaseManager: ObservableObject {
 
             await loadProfileStatus()
             await MainActor.run { self.rewardFlash = "+\(xpGain) XP — Wisdom absorbed" }
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            await MainActor.run { self.rewardFlash = nil }
+        } catch {}
+    }
+
+    // MARK: - Recovery + streak (#17)
+
+    static func parseTimestamp(_ s: String) -> Date? {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: s) { return d }
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: s)
+    }
+
+    /// Update streak + detect 36h inactivity (RecoveryDetector). Call on dashboard open.
+    func refreshActivity() async {
+        guard let client else { return }
+        guard let uid = try? await client.auth.session.user.id else { return }
+        let now = Date()
+        let iso = ISO8601DateFormatter().string(from: now)
+
+        guard let last = lastActiveAt else {
+            try? await client.from("profiles").update(["last_active_at": iso]).eq("id", value: uid.uuidString).execute()
+            try? await client.from("profiles").update(["current_streak": 1]).eq("id", value: uid.uuidString).execute()
+            await MainActor.run { self.streak = 1; self.needsRecovery = false; self.lastActiveAt = now }
+            return
+        }
+
+        if RecoveryDetector.evaluate(lastActiveAt: last, now: now) == .inactive {
+            try? await client.from("profiles").update(["current_streak": 0]).eq("id", value: uid.uuidString).execute()
+            await MainActor.run { self.needsRecovery = true; self.streak = 0 }
+            return
+        }
+
+        let newDay = !Calendar.current.isDate(last, inSameDayAs: now)
+        let newStreak = newDay ? streak + 1 : streak
+        try? await client.from("profiles").update(["last_active_at": iso]).eq("id", value: uid.uuidString).execute()
+        try? await client.from("profiles").update(["current_streak": newStreak]).eq("id", value: uid.uuidString).execute()
+        await MainActor.run { self.needsRecovery = false; self.streak = newStreak; self.lastActiveAt = now }
+    }
+
+    /// Complete the recovery quest: +50 XP, reset streak to 1, reopen the loop.
+    func completeRecoveryQuest() async {
+        guard let client else { return }
+        guard let uid = try? await client.auth.session.user.id else { return }
+        let xpGain = 50
+        let iso = ISO8601DateFormatter().string(from: Date())
+        let cur = ProgressionState(xp: xp, level: level, rank: Rank(rawValue: rankCode) ?? .e)
+        let res = ProgressionEngine.apply(cur, xpGain: xpGain)
+        do {
+            try await client.from("profiles")
+                .update(["xp": res.state.xp, "level": res.state.level, "current_streak": 1])
+                .eq("id", value: uid.uuidString).execute()
+            try await client.from("profiles").update(["rank": res.state.rank.rawValue]).eq("id", value: uid.uuidString).execute()
+            try await client.from("profiles").update(["last_active_at": iso]).eq("id", value: uid.uuidString).execute()
+            await loadProfileStatus()
+            await MainActor.run {
+                self.needsRecovery = false
+                self.rewardFlash = "Welcome back, Hunter! +50 XP"
+            }
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             await MainActor.run { self.rewardFlash = nil }
         } catch {}
