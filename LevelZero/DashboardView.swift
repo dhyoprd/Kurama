@@ -49,7 +49,7 @@ struct DashboardView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "flame.fill")
                                 .foregroundColor(Theme.gold)
-                            Text("14 Days")
+                            Text("\(supabase.streak) Days")
                                 .font(Theme.statsFont(size: 14))
                                 .foregroundColor(Theme.gold)
                         }
@@ -291,6 +291,28 @@ struct DashboardView: View {
                         }
                         .frame(height: 10)
 
+                        if supabase.needsRecovery {
+                            Text("RECOVERY")
+                                .font(Theme.titleFont(size: 14))
+                                .foregroundColor(Theme.gold)
+                                .padding(.top, 8)
+                            Text("Welcome back. No pressure — one small step to restart your streak.")
+                                .font(Theme.bodyFont(size: 13))
+                                .foregroundColor(Theme.subtext)
+                            Button {
+                                Task { await supabase.completeRecoveryQuest() }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "heart.fill").foregroundColor(Theme.gold)
+                                    Text("Recovery Quest: drink a glass of water")
+                                        .font(Theme.bodyFont(size: 15)).foregroundColor(Theme.text)
+                                    Spacer()
+                                    Image(systemName: "circle").foregroundColor(Theme.subtext)
+                                }
+                                .padding().background(Theme.card).cornerRadius(10)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
                         Text("TODAY'S QUESTS")
                             .font(Theme.titleFont(size: 14))
                             .foregroundColor(Theme.neonCyan)
@@ -336,6 +358,7 @@ struct DashboardView: View {
                                 .disabled(done)
                             }
                         }
+                        } // end recovery else
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
@@ -359,6 +382,7 @@ struct DashboardView: View {
         .animation(.spring(), value: supabase.rewardFlash)
         .task {
             await supabase.loadProfileStatus()
+            await supabase.refreshActivity()
             await supabase.loadOrAssignTodaysQuests()
         }
     }
