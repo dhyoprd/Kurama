@@ -1,206 +1,135 @@
 import SwiftUI
 
+/// Weekly Boss Raid Room (#12): HP bar depletes as requirements are checked off;
+/// conquer before the Sunday deadline for the reward.
 struct BossRaidView: View {
-    @State private var bossHealth: Double = 1.0 // 100%
-    @State private var tasks = [
-        RaidTask(title: "Complete 3 Workout Sessions", target: 3, current: 2),
-        RaidTask(title: "Log 30 minutes of Focus Reading", target: 3, current: 1),
-        RaidTask(title: "Save Rp100.000 this week", target: 1, current: 0)
-    ]
-    
+    @StateObject private var supabase = SupabaseManager.shared
+
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
-            
             ScrollView {
                 VStack(spacing: 20) {
-                    // Header
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("BOSS DUNGEON")
-                                .font(Theme.titleFont(size: 12))
-                                .foregroundColor(Theme.purple)
-                            Text("Weekly Boss Raid")
-                                .font(Theme.titleFont(size: 24))
-                                .foregroundColor(.white)
-                        }
-                        Spacer()
+                    header
+                    if let boss = supabase.boss {
+                        bossCard(boss)
+                    } else {
+                        Text("Summoning this week's boss...")
+                            .font(Theme.bodyFont(size: 14))
+                            .foregroundColor(Theme.subtext)
+                            .padding(.top, 60)
                     }
-                    .padding(.horizontal)
-                    
-                    // Boss Card with health bar
-                    VStack(spacing: 12) {
-                        Image(systemName: "flame.circle.fill")
-                            .resizable()
-                            .frame(width: 80, height: 80)
-                            .foregroundColor(Theme.purple)
-                            .shadow(color: Theme.purple, radius: 10)
-                            .padding(.top, 10)
-                        
-                        Text("IGRIS THE RED")
-                            .font(Theme.titleFont(size: 20))
-                            .foregroundColor(.white)
-                        
-                        Text("S-Rank Challenger")
-                            .font(Theme.statsFont(size: 12))
-                            .foregroundColor(Theme.purple)
-                        
-                        // HP bar
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("HP: \(Int(bossHealth * 100))%")
-                                    .font(Theme.statsFont(size: 12))
-                                    .foregroundColor(Theme.subtext)
-                                Spacer()
-                                Text("Time Left: 2d 5h")
-                                    .font(Theme.statsFont(size: 12))
-                                    .foregroundColor(Theme.gold)
-                            }
-                            
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.gray.opacity(0.3))
-                                        .frame(height: 10)
-                                    
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(LinearGradient(gradient: Gradient(colors: [Theme.purple, Color.red]), startPoint: .leading, endPoint: .trailing))
-                                        .frame(width: geo.size.width * CGFloat(bossHealth), height: 10)
-                                        .shadow(color: Theme.purple.opacity(0.6), radius: 4)
-                                }
-                            }
-                            .frame(height: 10)
-                        }
-                        .padding(.horizontal)
-                        .padding(.bottom, 15)
-                    }
-                    .background(Theme.card)
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Theme.purple.opacity(0.4), lineWidth: 1)
-                    )
-                    .padding(.horizontal)
-                    
-                    // Raid Targets Checklist
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("RAID TARGETS")
-                            .font(Theme.titleFont(size: 12))
-                            .foregroundColor(Theme.neonCyan)
-                            .padding(.horizontal)
-                        
-                        VStack(spacing: 12) {
-                            ForEach(tasks.indices, id: \.self) { idx in
-                                RaidTaskRow(task: $tasks[idx]) {
-                                    updateBossHealth()
-                                }
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
-                    
-                    // Reward info
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("VICTORY REWARDS")
-                            .font(Theme.titleFont(size: 12))
-                            .foregroundColor(Theme.gold)
-                        
-                        HStack {
-                            Image(systemName: "suit.diamond.fill")
-                                .foregroundColor(Theme.gold)
-                            Text("+1000 XP • ALL STATS +5 • Elite Badge")
-                                .font(Theme.statsFont(size: 13))
-                                .foregroundColor(.white)
-                        }
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Theme.card)
-                    .cornerRadius(12)
-                    .padding(.horizontal)
-                    .padding(.bottom, 20)
                 }
                 .padding(.vertical)
             }
         }
-        .onAppear {
-            updateBossHealth()
+        .task {
+            await supabase.loadProfileStatus()
+            await supabase.loadOrSpawnWeeklyBoss()
         }
     }
-    
-    private func updateBossHealth() {
-        let totalTarget = tasks.reduce(0) { $0 + $1.target }
-        let totalCurrent = tasks.reduce(0) { $0 + min($1.current, $1.target) }
-        
-        if totalTarget > 0 {
-            // HP starts at 100%, drops as current goals are finished
-            bossHealth = 1.0 - (Double(totalCurrent) / Double(totalTarget))
-        } else {
-            bossHealth = 0
-        }
-    }
-}
 
-struct RaidTask {
-    let title: String
-    let target: Int
-    var current: Int
-}
-
-struct RaidTaskRow: View {
-    @Binding var task: RaidTask
-    let onProgressUpdate: () -> Void
-    
-    var body: some View {
+    private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(task.title)
-                    .font(Theme.titleFont(size: 14))
+                Text("BOSS DUNGEON")
+                    .font(Theme.titleFont(size: 12))
+                    .foregroundColor(Theme.purple)
+                Text("Weekly Boss Raid")
+                    .font(Theme.titleFont(size: 24))
                     .foregroundColor(.white)
-                
-                Text("Progress: \(task.current) / \(task.target)")
-                    .font(Theme.statsFont(size: 12))
-                    .foregroundColor(Theme.neonCyan)
             }
-            
             Spacer()
-            
-            // Incrementor
-            HStack(spacing: 12) {
-                Button(action: {
-                    if task.current > 0 {
-                        task.current -= 1
-                        onProgressUpdate()
-                    }
-                }) {
-                    Image(systemName: "minus.square.fill")
-                        .foregroundColor(Theme.subtext)
-                        .font(.title3)
+        }
+        .padding(.horizontal)
+    }
+
+    private func bossCard(_ boss: SupabaseManager.BossVM) -> some View {
+        let hp = boss.required > 0 ? max(0, 1 - Double(boss.progress) / Double(boss.required)) : 0
+        let ready = boss.progress >= boss.required
+        return VStack(spacing: 16) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: 64))
+                .foregroundColor(Theme.purple)
+                .shadow(color: Theme.purple, radius: 16)
+
+            Text(boss.title)
+                .font(Theme.titleFont(size: 20))
+                .foregroundColor(.white)
+            Text(boss.description)
+                .font(Theme.bodyFont(size: 14))
+                .foregroundColor(Theme.subtext)
+                .multilineTextAlignment(.center)
+
+            // HP bar
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("BOSS HP").font(Theme.statsFont(size: 11)).foregroundColor(Theme.subtext)
+                    Spacer()
+                    Text("\(boss.progress)/\(boss.required) cleared")
+                        .font(Theme.statsFont(size: 11)).foregroundColor(Theme.subtext)
                 }
-                .disabled(task.current == 0)
-                
-                Button(action: {
-                    if task.current < task.target {
-                        task.current += 1
-                        onProgressUpdate()
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Theme.card).frame(height: 14)
+                        Capsule().fill(Theme.purple)
+                            .frame(width: geo.size.width * hp, height: 14)
+                            .shadow(color: Theme.purple, radius: 4)
                     }
-                }) {
-                    Image(systemName: "plus.square.fill")
-                        .foregroundColor(Theme.neonCyan)
-                        .font(.title3)
                 }
-                .disabled(task.current == task.target)
+                .frame(height: 14)
+            }
+
+            Text(countdown(to: boss.deadline))
+                .font(Theme.statsFont(size: 12))
+                .foregroundColor(Theme.gold)
+
+            switch boss.status {
+            case "completed":
+                Label("BOSS DEFEATED", systemImage: "trophy.fill")
+                    .font(Theme.titleFont(size: 16))
+                    .foregroundColor(Theme.gold)
+            case "failed":
+                Text("The boss escaped this week. A new one arrives Monday.")
+                    .font(Theme.bodyFont(size: 13))
+                    .foregroundColor(Theme.subtext)
+                    .multilineTextAlignment(.center)
+            default:
+                VStack(spacing: 10) {
+                    Button {
+                        Task { await supabase.bossAttack() }
+                    } label: {
+                        Text("Strike (clear a requirement)")
+                            .bold().frame(maxWidth: .infinity).padding()
+                            .background(ready ? Theme.card : Theme.purple)
+                            .foregroundColor(.white).cornerRadius(10)
+                    }
+                    .disabled(ready)
+
+                    Button {
+                        Task { await supabase.conquerBoss() }
+                    } label: {
+                        Text("Conquer Boss  (+\(boss.xpReward) XP)")
+                            .bold().frame(maxWidth: .infinity).padding()
+                            .background(ready ? Theme.gold : Theme.card)
+                            .foregroundColor(ready ? Theme.background : Theme.subtext)
+                            .cornerRadius(10)
+                    }
+                    .disabled(!ready)
+                }
             }
         }
         .padding()
-        .background(Theme.card)
-        .cornerRadius(10)
+        .background(Theme.card.opacity(0.6))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.purple.opacity(0.5), lineWidth: 1))
+        .cornerRadius(16)
+        .padding(.horizontal)
     }
-}
 
-struct BossRaidView_Previews: PreviewProvider {
-    static var previews: some View {
-        BossRaidView()
-            .preferredColorScheme(.dark)
+    private func countdown(to deadline: Date) -> String {
+        let remaining = max(0, deadline.timeIntervalSinceNow)
+        let days = Int(remaining) / 86400
+        let hours = (Int(remaining) % 86400) / 3600
+        return "Ends in \(days)d \(hours)h"
     }
 }

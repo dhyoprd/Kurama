@@ -21,6 +21,7 @@ class SupabaseManager: ObservableObject {
     @Published var rankCode = "E"
     @Published var stats: [String: Int] = [:]
     @Published var rewardFlash: String?
+    @Published var boss: BossVM?
     
     private init() {
         if let url = Config.supabaseURL, let key = Config.supabaseAnonKey, !key.isEmpty, !key.contains("your-anon-public-key") {
@@ -399,5 +400,152 @@ class SupabaseManager: ObservableObject {
         } catch {
             // Leave UI as-is on failure.
         }
+    }
+
+    // MARK: - Weekly boss (#12)
+
+    struct BossVM: Equatable {
+        let rowId: UUID
+        let title: String
+        let description: String
+        let progress: Int
+        let required: Int
+        let status: String
+        let badge: String?
+        let xpReward: Int
+        let statRewards: [String: Int]
+        let deadline: Date
+    }
+
+    private struct BossMaster: Decodable {
+        let id: UUID
+        let life_class: String?
+    }
+    private struct BossEmbed: Decodable {
+        let title: String
+        let description: String
+        let required_count: Int
+        let xp_reward: Int
+        let stat_rewards: [String: Int]
+        let badge_reward: String?
+    }
+    private struct BossJoin: Decodable {
+        let id: UUID
+        let status: String
+        let progress: Int
+        let week_start_date: String
+        let weekly_bosses: BossEmbed?
+    }
+    private struct BossInsert: Encodable {
+        let user_id: String
+        let boss_id: String
+        let week_start_date: String
+        let status: String
+    }
+
+    private func currentWeekStart() -> Date {
+        var cal = Calendar(identifier: .iso8601)
+        cal.timeZone = .current
+        let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+        return cal.date(from: comps) ?? Date()
+    }
+
+    func loadOrSpawnWeeklyBoss() async {
+        guard let client else { return }
+        guard let uid = try? await client.auth.session.user.id else { return }
+        let weekStart = currentWeekStart()
+        let weekStartStr = Self.dayFormatter.string(from: weekStart)
+        do {
+            var rows = try await fetchBoss(client, uid: uid, week: weekStartStr)
+            if rows.isEmpty {
+                try await spawnBoss(client, uid: uid, week: weekStartStr)
+                rows = try await fetchBoss(client, uid: uid, week: weekStartStr)
+            }
+            guard let row = rows.first, let m = row.weekly_bosses else {
+                await MainActor.run { self.boss = nil }
+                return
+            }
+            let deadline = weekStart.addingTimeInterval(7 * 24 * 3600)
+            var status = row.status
+            if status == "active" && Date() >= deadline {
+                try await client.from("user_weekly_bosses")
+                    .update(["status": "failed"]).eq("id", value: row.id.uuidString).execute()
+                status = "failed"
+            }
+            let vm = BossVM(
+                rowId: row.id, title: m.title, description: m.description,
+                progress: row.progress, required: m.required_count, status: status,
+                badge: m.badge_reward, xpReward: m.xp_reward, statRewards: m.stat_rewards, deadline: deadline
+            )
+            await MainActor.run { self.boss = vm }
+        } catch {
+            await MainActor.run { self.boss = nil }
+        }
+    }
+
+    private func fetchBoss(_ client: SupabaseClient, uid: UUID, week: String) async throws -> [BossJoin] {
+        try await client.from("user_weekly_bosses")
+            .select("id,status,progress,week_start_date,weekly_bosses(title,description,required_count,xp_reward,stat_rewards,badge_reward)")
+            .eq("user_id", value: uid.uuidString)
+            .eq("week_start_date", value: week)
+            .execute().value
+    }
+
+    private func spawnBoss(_ client: SupabaseClient, uid: UUID, week: String) async throws {
+        let pool: [BossMaster] = try await client.from("weekly_bosses")
+            .select("id,life_class").execute().value
+        let myClass = lifeClass?.rawValue
+        let matched = pool.filter { $0.life_class == myClass }
+        let general = pool.filter { $0.life_class == nil }
+        guard let chosen = (matched.isEmpty ? general : matched).first else { return }
+        try await client.from("user_weekly_bosses").insert(BossInsert(
+            user_id: uid.uuidString, boss_id: chosen.id.uuidString, week_start_date: week, status: "active"
+        )).execute()
+    }
+
+    /// Check off one boss requirement (HP bar depletes).
+    func bossAttack() async {
+        guard let client, let b = boss, b.status == "active", b.progress < b.required else { return }
+        do {
+            try await client.from("user_weekly_bosses")
+                .update(["progress": b.progress + 1])
+                .eq("id", value: b.rowId.uuidString)
+                .eq("status", value: "active")
+                .execute()
+            await loadOrSpawnWeeklyBoss()
+        } catch {}
+    }
+
+    /// Conquer the boss once all requirements are met (reward via the cores; no double-claim).
+    func conquerBoss() async {
+        guard let client, let b = boss, b.status == "active", b.progress >= b.required else { return }
+        guard let uid = try? await client.auth.session.user.id else { return }
+        let state = BossState(status: .active, weekStart: currentWeekStart(), rerollsUsed: 0)
+        let (out, reward) = WeeklyBossLifecycle.conquer(state, now: Date())
+        guard out.status == .completed, let reward else { return }
+        do {
+            let claimed: [IDRow] = try await client.from("user_weekly_bosses")
+                .update(["status": "completed", "completed_at": ISO8601DateFormatter().string(from: Date())])
+                .eq("id", value: b.rowId.uuidString)
+                .eq("status", value: "active")
+                .select("id")
+                .execute().value
+            guard !claimed.isEmpty else { return }
+
+            let cur = ProgressionState(xp: xp, level: level, rank: Rank(rawValue: rankCode) ?? .e)
+            let res = ProgressionEngine.apply(cur, xpGain: reward.xp)
+            var update: [String: Int] = ["xp": res.state.xp, "level": res.state.level]
+            for (stat, delta) in b.statRewards {
+                update[stat] = (stats[stat] ?? 10) + delta
+            }
+            try await client.from("profiles").update(update).eq("id", value: uid.uuidString).execute()
+            try await client.from("profiles").update(["rank": res.state.rank.rawValue]).eq("id", value: uid.uuidString).execute()
+
+            await loadProfileStatus()
+            await loadOrSpawnWeeklyBoss()
+            await MainActor.run { self.rewardFlash = "BOSS DEFEATED!  +\(reward.xp) XP" }
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            await MainActor.run { self.rewardFlash = nil }
+        } catch {}
     }
 }
