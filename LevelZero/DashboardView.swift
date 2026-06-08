@@ -256,12 +256,49 @@ struct DashboardView: View {
                     .cornerRadius(12)
                     .padding(.horizontal)
                     .padding(.bottom, 20)
+
+                    // Today's Quests (#6)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("TODAY'S QUESTS")
+                            .font(Theme.titleFont(size: 14))
+                            .foregroundColor(Theme.neonCyan)
+                        if supabase.todaysQuests.isEmpty {
+                            Text("Summoning your quests...")
+                                .font(Theme.bodyFont(size: 13))
+                                .foregroundColor(Theme.subtext)
+                        } else {
+                            ForEach(supabase.todaysQuests) { quest in
+                                HStack(spacing: 12) {
+                                    Text(quest.difficulty)
+                                        .font(Theme.statsFont(size: 12))
+                                        .foregroundColor(Theme.background)
+                                        .frame(width: 26, height: 26)
+                                        .background(Theme.neonCyan)
+                                        .clipShape(Circle())
+                                    Text(quest.title)
+                                        .font(Theme.bodyFont(size: 15))
+                                        .foregroundColor(Theme.text)
+                                    Spacer()
+                                }
+                                .padding()
+                                .background(Theme.card)
+                                .cornerRadius(10)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.bottom, 20)
                 }
                 .padding(.vertical)
             }
         }
+        .task {
+            await supabase.loadProfileStatus()
+            await supabase.loadOrAssignTodaysQuests()
+        }
     }
-    
+
     private func triggerDialogue() {
         let dialogues = [
             "Your current focus is STR. Keep pushing your body!",
