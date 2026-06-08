@@ -22,6 +22,7 @@ class SupabaseManager: ObservableObject {
     @Published var stats: [String: Int] = [:]
     @Published var rewardFlash: String?
     @Published var boss: BossVM?
+    @Published var books: [BookVM] = []
     
     private init() {
         if let url = Config.supabaseURL, let key = Config.supabaseAnonKey, !key.isEmpty, !key.contains("your-anon-public-key") {
@@ -544,6 +545,70 @@ class SupabaseManager: ObservableObject {
             await loadProfileStatus()
             await loadOrSpawnWeeklyBoss()
             await MainActor.run { self.rewardFlash = "BOSS DEFEATED!  +\(reward.xp) XP" }
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            await MainActor.run { self.rewardFlash = nil }
+        } catch {}
+    }
+
+    // MARK: - Library & reading (#15 / #16)
+
+    struct BookVM: Identifiable, Equatable {
+        let id: UUID
+        let title: String
+        let author: String
+        let coverSymbol: String
+        let pages: [String]
+    }
+
+    private struct BookRow: Decodable {
+        let id: UUID
+        let title: String
+        let author: String
+        let cover_symbol: String
+        let pages: [String]
+    }
+    private struct ReadingSessionInsert: Encodable {
+        let user_id: String
+        let book_id: String
+        let duration_seconds: Int
+        let takeaway: String
+        let xp_earned: Int
+    }
+
+    func loadBooks() async {
+        guard let client else { return }
+        do {
+            let rows: [BookRow] = try await client.from("books")
+                .select("id,title,author,cover_symbol,pages").execute().value
+            let vms = rows.map { BookVM(id: $0.id, title: $0.title, author: $0.author, coverSymbol: $0.cover_symbol, pages: $0.pages) }
+            await MainActor.run { self.books = vms }
+        } catch {
+            await MainActor.run { self.books = [] }
+        }
+    }
+
+    /// Save a finished reading session and award +25 XP (toward Intelligence).
+    func saveReadingSession(bookId: UUID, takeaway: String, durationSeconds: Int) async {
+        guard let client else { return }
+        guard let uid = try? await client.auth.session.user.id else { return }
+        let xpGain = ReadingFocusTimer.readingXP
+        do {
+            try await client.from("user_reading_sessions").insert(ReadingSessionInsert(
+                user_id: uid.uuidString, book_id: bookId.uuidString,
+                duration_seconds: durationSeconds, takeaway: takeaway, xp_earned: xpGain
+            )).execute()
+
+            let cur = ProgressionState(xp: xp, level: level, rank: Rank(rawValue: rankCode) ?? .e)
+            let res = ProgressionEngine.apply(cur, xpGain: xpGain)
+            let newInt = (stats["intelligence"] ?? 10) + 1
+            try await client.from("profiles")
+                .update(["xp": res.state.xp, "level": res.state.level, "intelligence": newInt])
+                .eq("id", value: uid.uuidString).execute()
+            try await client.from("profiles")
+                .update(["rank": res.state.rank.rawValue]).eq("id", value: uid.uuidString).execute()
+
+            await loadProfileStatus()
+            await MainActor.run { self.rewardFlash = "+\(xpGain) XP — Wisdom absorbed" }
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             await MainActor.run { self.rewardFlash = nil }
         } catch {}
