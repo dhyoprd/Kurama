@@ -18,6 +18,11 @@ struct DashboardView: View {
         ("WEA", 12),
         ("MND", 28)
     ]
+
+    private var xpFraction: CGFloat {
+        let denom = max(supabase.level * 100, 1)
+        return min(CGFloat(supabase.xp) / CGFloat(denom), 1)
+    }
     
     var body: some View {
         ZStack {
@@ -257,32 +262,75 @@ struct DashboardView: View {
                     .padding(.horizontal)
                     .padding(.bottom, 20)
 
-                    // Today's Quests (#6)
+                    // Progression + Today's Quests (#6 / #7)
                     VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            Text("LV \(supabase.level)")
+                                .font(Theme.titleFont(size: 16))
+                                .foregroundColor(.white)
+                            Text("\(supabase.rankCode)-RANK")
+                                .font(Theme.statsFont(size: 11))
+                                .foregroundColor(Theme.background)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Theme.neonCyan).cornerRadius(6)
+                            Spacer()
+                            Text("\(supabase.xp) / \(supabase.level * 100) XP")
+                                .font(Theme.statsFont(size: 12))
+                                .foregroundColor(Theme.subtext)
+                        }
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Theme.card).frame(height: 10)
+                                Capsule().fill(Theme.neonCyan)
+                                    .frame(width: geo.size.width * xpFraction, height: 10)
+                                    .shadow(color: Theme.neonCyan, radius: 4)
+                            }
+                        }
+                        .frame(height: 10)
+
                         Text("TODAY'S QUESTS")
                             .font(Theme.titleFont(size: 14))
                             .foregroundColor(Theme.neonCyan)
+                            .padding(.top, 8)
+
                         if supabase.todaysQuests.isEmpty {
                             Text("Summoning your quests...")
                                 .font(Theme.bodyFont(size: 13))
                                 .foregroundColor(Theme.subtext)
                         } else {
                             ForEach(supabase.todaysQuests) { quest in
-                                HStack(spacing: 12) {
-                                    Text(quest.difficulty)
-                                        .font(Theme.statsFont(size: 12))
-                                        .foregroundColor(Theme.background)
-                                        .frame(width: 26, height: 26)
-                                        .background(Theme.neonCyan)
-                                        .clipShape(Circle())
-                                    Text(quest.title)
-                                        .font(Theme.bodyFont(size: 15))
-                                        .foregroundColor(Theme.text)
-                                    Spacer()
+                                let done = quest.status == "completed"
+                                Button {
+                                    guard !done else { return }
+                                    Task {
+                                        await supabase.completeQuest(
+                                            id: quest.id,
+                                            difficulty: quest.difficulty,
+                                            statReward: quest.statReward
+                                        )
+                                    }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Text(quest.difficulty)
+                                            .font(Theme.statsFont(size: 12))
+                                            .foregroundColor(Theme.background)
+                                            .frame(width: 26, height: 26)
+                                            .background(done ? Theme.subtext : Theme.neonCyan)
+                                            .clipShape(Circle())
+                                        Text(quest.title)
+                                            .font(Theme.bodyFont(size: 15))
+                                            .foregroundColor(done ? Theme.subtext : Theme.text)
+                                            .strikethrough(done)
+                                        Spacer()
+                                        Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                                            .foregroundColor(done ? Theme.neonCyan : Theme.subtext)
+                                    }
+                                    .padding()
+                                    .background(Theme.card)
+                                    .cornerRadius(10)
                                 }
-                                .padding()
-                                .background(Theme.card)
-                                .cornerRadius(10)
+                                .buttonStyle(.plain)
+                                .disabled(done)
                             }
                         }
                     }
@@ -293,6 +341,19 @@ struct DashboardView: View {
                 .padding(.vertical)
             }
         }
+        .overlay(alignment: .top) {
+            if let flash = supabase.rewardFlash {
+                Text(flash)
+                    .font(Theme.titleFont(size: 16))
+                    .foregroundColor(Theme.background)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(Theme.gold).cornerRadius(12)
+                    .shadow(color: Theme.gold, radius: 8)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(), value: supabase.rewardFlash)
         .task {
             await supabase.loadProfileStatus()
             await supabase.loadOrAssignTodaysQuests()
