@@ -75,18 +75,28 @@ struct DashboardView: View {
                             // Mock Full Body Standing Novice Avatar
                             VStack {
                                 Spacer()
-                                Image(systemName: "figure.walk.motion")
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(height: 160)
-                                    .foregroundColor(Theme.neonCyan)
-                                    .shadow(color: Theme.neonCyan, radius: 8)
-                                    .offset(x: tiltOffset) // Gyroscope simulation offset
-                                    .onAppear {
-                                        withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-                                            tiltOffset = 5
+                                Group {
+                                    if let url = supabase.avatarURL {
+                                        AsyncImage(url: url) { img in
+                                            img.resizable().aspectRatio(contentMode: .fit)
+                                        } placeholder: {
+                                            ProgressView().tint(Theme.neonCyan)
                                         }
+                                    } else {
+                                        Image(systemName: "figure.walk.motion")
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fit)
+                                            .foregroundColor(Theme.neonCyan)
+                                            .shadow(color: Theme.neonCyan, radius: 8)
                                     }
+                                }
+                                .frame(height: 160)
+                                .offset(x: tiltOffset) // Gyroscope simulation offset
+                                .onAppear {
+                                    withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
+                                        tiltOffset = 5
+                                    }
+                                }
                                 Spacer()
                             }
                             .frame(height: 200)

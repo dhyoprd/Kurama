@@ -47,4 +47,20 @@ import Testing
         #expect(p.contains("full-body"))
         #expect(p.contains("gold neon")) // noble flavor
     }
+
+    // Behavior 6: life class -> signature stat (initial archetype at L1).
+    @Test(arguments: [
+        (LifeClass.warrior, Stat.strength), (.scholar, .intelligence),
+        (.monk, .mind), (.builder, .wealth), (.strategist, .charisma),
+    ])
+    func signatureStatPerClass(_ t: (LifeClass, Stat)) {
+        #expect(AvatarPromptSelector.signatureStat(for: t.0) == t.1)
+    }
+
+    // Behavior 7: L1 prompt by life class picks the right archetype flavor.
+    @Test func l1PromptMatchesLifeClass() {
+        #expect(AvatarPromptSelector.prompt(rank: .e, lifeClass: .warrior).contains("battle armor"))
+        #expect(AvatarPromptSelector.prompt(rank: .e, lifeClass: .scholar).contains("mage robes"))
+        #expect(AvatarPromptSelector.prompt(rank: .e, lifeClass: .builder).contains("gold neon"))
+    }
 }
