@@ -16,6 +16,11 @@ class SupabaseManager: ObservableObject {
     @Published var avatarURL: URL?
     @Published var intensity: Intensity = .normal
     @Published var todaysQuests: [DailyQuestVM] = []
+    @Published var level = 1
+    @Published var xp = 0
+    @Published var rankCode = "E"
+    @Published var stats: [String: Int] = [:]
+    @Published var rewardFlash: String?
     
     private init() {
         if let url = Config.supabaseURL, let key = Config.supabaseAnonKey, !key.isEmpty, !key.contains("your-anon-public-key") {
@@ -117,6 +122,15 @@ class SupabaseManager: ObservableObject {
         let avatar_url: String?
         let life_class: String
         let intensity: String
+        let level: Int
+        let xp: Int
+        let rank: String
+        let strength: Int
+        let intelligence: Int
+        let discipline: Int
+        let charisma: Int
+        let wealth: Int
+        let mind: Int
     }
 
     private struct ProfileInsert: Encodable {
@@ -139,7 +153,7 @@ class SupabaseManager: ObservableObject {
         do {
             let rows: [ProfileStatusRow] = try await client
                 .from("profiles")
-                .select("id,avatar_url,life_class,intensity")
+                .select("id,avatar_url,life_class,intensity,level,xp,rank,strength,intelligence,discipline,charisma,wealth,mind")
                 .eq("id", value: uid.uuidString)
                 .execute()
                 .value
@@ -150,6 +164,14 @@ class SupabaseManager: ObservableObject {
                 self.lifeClass = row.flatMap { LifeClass(rawValue: $0.life_class) }
                 self.intensity = row.flatMap { Intensity(rawValue: $0.intensity) } ?? .normal
                 self.avatarURL = row?.avatar_url.flatMap { URL(string: $0) }
+                self.level = row?.level ?? 1
+                self.xp = row?.xp ?? 0
+                self.rankCode = row?.rank ?? "E"
+                self.stats = row.map {
+                    ["strength": $0.strength, "intelligence": $0.intelligence,
+                     "discipline": $0.discipline, "charisma": $0.charisma,
+                     "wealth": $0.wealth, "mind": $0.mind]
+                } ?? [:]
             }
         } catch {
             await MainActor.run { self.hasProfile = false; self.needsAvatar = false }
@@ -215,6 +237,8 @@ class SupabaseManager: ObservableObject {
         let id: UUID
         let title: String
         let difficulty: String
+        let statReward: String
+        let status: String
     }
 
     private struct QuestPoolRow: Decodable {
@@ -225,6 +249,7 @@ class SupabaseManager: ObservableObject {
     private struct QuestTitleRow: Decodable {
         let title: String
         let difficulty: String
+        let stat_reward: String
     }
     private struct TodayQuestRow: Decodable {
         let id: UUID
@@ -262,7 +287,9 @@ class SupabaseManager: ObservableObject {
                 DailyQuestVM(
                     id: $0.id,
                     title: $0.quests?.title ?? $0.custom_title ?? "Quest",
-                    difficulty: $0.quests?.difficulty ?? "E"
+                    difficulty: $0.quests?.difficulty ?? "E",
+                    statReward: $0.quests?.stat_reward ?? "discipline",
+                    status: $0.status
                 )
             }
             await MainActor.run { self.todaysQuests = vms }
@@ -274,7 +301,7 @@ class SupabaseManager: ObservableObject {
     private func fetchTodayQuests(_ client: SupabaseClient, uid: UUID, today: String) async throws -> [TodayQuestRow] {
         try await client
             .from("user_quests")
-            .select("id,status,custom_title,quests(title,difficulty)")
+            .select("id,status,custom_title,quests(title,difficulty,stat_reward)")
             .eq("user_id", value: uid.uuidString)
             .eq("assigned_date", value: today)
             .execute()
@@ -313,5 +340,64 @@ class SupabaseManager: ObservableObject {
             hash = (hash ^ UInt64(byte)) &* 1099511628211
         }
         return hash
+    }
+
+    // MARK: - Quest completion (#7)
+
+    private struct UQComplete: Encodable {
+        let status: String
+        let xp_earned: Int
+        let stat_earned: String
+        let completed_at: String
+    }
+    private struct IDRow: Decodable { let id: UUID }
+
+    /// Complete a quest: award XP/stat via the cores, persist, prevent double-claim.
+    func completeQuest(id: UUID, difficulty: String, statReward: String) async {
+        guard let client else { return }
+        guard let uid = try? await client.auth.session.user.id else { return }
+        guard let diff = Difficulty(rawValue: difficulty) else { return }
+        let reward = QuestRewardCalculator.reward(difficulty: diff, proofAttached: false)
+        do {
+            // Claim only if still active (atomic guard against double XP).
+            let claimed: [IDRow] = try await client
+                .from("user_quests")
+                .update(UQComplete(
+                    status: "completed",
+                    xp_earned: reward.xp,
+                    stat_earned: statReward,
+                    completed_at: ISO8601DateFormatter().string(from: Date())
+                ))
+                .eq("id", value: id.uuidString)
+                .eq("status", value: "active")
+                .select("id")
+                .execute()
+                .value
+            guard !claimed.isEmpty else { return }
+
+            let current = ProgressionState(xp: xp, level: level, rank: Rank(rawValue: rankCode) ?? .e)
+            let result = ProgressionEngine.apply(current, xpGain: reward.xp)
+            let newStat = (stats[statReward] ?? 10) + reward.statDelta
+
+            try await client.from("profiles")
+                .update(["xp": result.state.xp, "level": result.state.level, statReward: newStat])
+                .eq("id", value: uid.uuidString).execute()
+            try await client.from("profiles")
+                .update(["rank": result.state.rank.rawValue])
+                .eq("id", value: uid.uuidString).execute()
+
+            let leveled = result.events.contains { if case .leveledUp = $0 { return true } else { return false } }
+            let ranked = result.events.contains { if case .rankedUp = $0 { return true } else { return false } }
+            let flash = ranked ? "RANK UP \(result.state.rank.rawValue)!  +\(reward.xp) XP"
+                : (leveled ? "LEVEL \(result.state.level)!  +\(reward.xp) XP" : "+\(reward.xp) XP")
+
+            await loadProfileStatus()
+            await loadOrAssignTodaysQuests()
+            await MainActor.run { self.rewardFlash = flash }
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            await MainActor.run { self.rewardFlash = nil }
+        } catch {
+            // Leave UI as-is on failure.
+        }
     }
 }

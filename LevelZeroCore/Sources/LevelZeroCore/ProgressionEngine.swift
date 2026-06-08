@@ -3,8 +3,8 @@
 //   xp = progress WITHIN the current level (not lifetime total).
 //   advance L -> L+1 costs L*100 XP.
 
-public enum Rank: Equatable, Sendable {
-    case e, d, c, b, a, s
+public enum Rank: String, Equatable, Sendable {
+    case e = "E", d = "D", c = "C", b = "B", a = "A", s = "S"
 }
 
 public struct ProgressionState: Equatable, Sendable {
