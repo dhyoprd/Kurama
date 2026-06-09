@@ -26,6 +26,7 @@ class SupabaseManager: ObservableObject {
     @Published var streak = 0
     @Published var needsRecovery = false
     @Published var lastActiveAt: Date?
+    @Published var trophies: [TrophyVM] = []
     
     private init() {
         if let url = Config.supabaseURL, let key = Config.supabaseAnonKey, !key.isEmpty, !key.contains("your-anon-public-key") {
@@ -709,5 +710,38 @@ class SupabaseManager: ObservableObject {
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             await MainActor.run { self.rewardFlash = nil }
         } catch {}
+    }
+
+    // MARK: - Trophy room (#14)
+
+    struct TrophyVM: Identifiable, Equatable {
+        let id: UUID
+        let title: String
+        let badge: String
+    }
+
+    private struct TrophyBoss: Decodable {
+        let title: String
+        let badge_reward: String?
+    }
+    private struct TrophyJoin: Decodable {
+        let id: UUID
+        let weekly_bosses: TrophyBoss?
+    }
+
+    func loadTrophies() async {
+        guard let client else { return }
+        guard let uid = try? await client.auth.session.user.id else { return }
+        do {
+            let rows: [TrophyJoin] = try await client.from("user_weekly_bosses")
+                .select("id,weekly_bosses(title,badge_reward)")
+                .eq("user_id", value: uid.uuidString)
+                .eq("status", value: "completed")
+                .execute().value
+            let vms = rows.map { TrophyVM(id: $0.id, title: $0.weekly_bosses?.title ?? "Boss", badge: $0.weekly_bosses?.badge_reward ?? "champion") }
+            await MainActor.run { self.trophies = vms }
+        } catch {
+            await MainActor.run { self.trophies = [] }
+        }
     }
 }

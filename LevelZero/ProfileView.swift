@@ -1,12 +1,9 @@
 import SwiftUI
+import LevelZeroCore
 
 struct ProfileView: View {
-    let badges = [
-        RaidBadge(name: "Novice Clear", desc: "Defeated E-Rank Boss", icon: "shield.fill", color: Theme.neonCyan),
-        RaidBadge(name: "Iron Conqueror", desc: "Defeated D-Rank Boss", icon: "hammer.fill", color: Theme.subtext),
-        RaidBadge(name: "Aura Master", desc: "Reached 10-day reading streak", icon: "flame.fill", color: Theme.gold)
-    ]
-    
+    @StateObject private var supabase = SupabaseManager.shared
+
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
@@ -25,7 +22,7 @@ struct ProfileView: View {
                             .font(Theme.titleFont(size: 22))
                             .foregroundColor(.white)
                         
-                        Text("Class: Warrior | Rank: D-Rank")
+                        Text("Class: \((supabase.lifeClass?.rawValue ?? "warrior").capitalized)  |  \(supabase.rankCode)-Rank  |  Lv \(supabase.level)")
                             .font(Theme.statsFont(size: 14))
                             .foregroundColor(Theme.subtext)
                     }
@@ -50,46 +47,45 @@ struct ProfileView: View {
                     }
                     .padding(.horizontal)
                     
-                    // Badges Grid
+                    // Trophy Room (#14)
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("COLLECTED BADGES")
+                        Text("TROPHY ROOM")
                             .font(Theme.titleFont(size: 12))
                             .foregroundColor(Theme.neonCyan)
                             .padding(.horizontal)
-                        
-                        VStack(spacing: 12) {
-                            ForEach(badges, id: \.name) { badge in
-                                HStack(spacing: 16) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(badge.color.opacity(0.15))
-                                            .frame(width: 44, height: 44)
-                                        
-                                        Image(systemName: badge.icon)
-                                            .foregroundColor(badge.color)
+
+                        if supabase.trophies.isEmpty {
+                            Text("No trophies yet. Conquer a weekly boss to earn your first badge.")
+                                .font(Theme.bodyFont(size: 13))
+                                .foregroundColor(Theme.subtext)
+                                .padding(.horizontal)
+                        } else {
+                            VStack(spacing: 12) {
+                                ForEach(supabase.trophies) { trophy in
+                                    HStack(spacing: 16) {
+                                        ZStack {
+                                            Circle().fill(Theme.gold.opacity(0.15)).frame(width: 44, height: 44)
+                                            Image(systemName: "trophy.fill").foregroundColor(Theme.gold)
+                                        }
+                                        .overlay(Circle().stroke(Theme.gold.opacity(0.4), lineWidth: 1))
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(trophy.title)
+                                                .font(Theme.titleFont(size: 15))
+                                                .foregroundColor(.white)
+                                            Text(trophy.badge.replacingOccurrences(of: "_", with: " ").capitalized)
+                                                .font(Theme.bodyFont(size: 12))
+                                                .foregroundColor(Theme.subtext)
+                                        }
+                                        Spacer()
                                     }
-                                    .overlay(
-                                        Circle()
-                                            .stroke(badge.color.opacity(0.4), lineWidth: 1)
-                                    )
-                                    
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(badge.name)
-                                            .font(Theme.titleFont(size: 15))
-                                            .foregroundColor(.white)
-                                        
-                                        Text(badge.desc)
-                                            .font(Theme.bodyFont(size: 12))
-                                            .foregroundColor(Theme.subtext)
-                                    }
-                                    Spacer()
+                                    .padding()
+                                    .background(Theme.card)
+                                    .cornerRadius(12)
                                 }
-                                .padding()
-                                .background(Theme.card)
-                                .cornerRadius(12)
                             }
+                            .padding(.horizontal)
                         }
-                        .padding(.horizontal)
                     }
                     
                     // App settings / account info
@@ -105,8 +101,12 @@ struct ProfileView: View {
                 .padding(.vertical)
             }
         }
+        .task {
+            await supabase.loadProfileStatus()
+            await supabase.loadTrophies()
+        }
     }
-    
+
     private func shareProfileCard() {
         // Mock share behavior
         let activityVC = UIActivityViewController(activityItems: ["Level Zero Profile - JinWoo. Level: 14, Rank: D-Rank. Stats: STR 45, INT 18, DIS 30."], applicationActivities: nil)
