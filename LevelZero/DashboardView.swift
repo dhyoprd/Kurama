@@ -8,6 +8,12 @@ struct DashboardView: View {
     
     // CoreMotion/Gyroscope simulation states
     @State private var tiltOffset: CGFloat = 0
+
+    // Custom quest sheet (#10)
+    @State private var showCustom = false
+    @State private var customTitle = ""
+    @State private var customDifficulty: Difficulty = .e
+    @State private var customStat = "discipline"
     
     // Stats mapping from LevelZeroCore
     // Real stats from the profile (#8), in canonical order.
@@ -374,6 +380,17 @@ struct DashboardView: View {
                                     }
                                 }
                             }
+
+                            Button { showCustom = true } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "plus.circle")
+                                    Text("Custom Quest")
+                                }
+                                .font(Theme.bodyFont(size: 14))
+                                .foregroundColor(Theme.neonCyan)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                            }
                         }
                         } // end recovery else
                     }
@@ -397,10 +414,50 @@ struct DashboardView: View {
             }
         }
         .animation(.spring(), value: supabase.rewardFlash)
+        .sheet(isPresented: $showCustom) { customQuestSheet }
         .task {
             await supabase.loadProfileStatus()
             await supabase.refreshActivity()
             await supabase.loadOrAssignTodaysQuests()
+        }
+    }
+
+    private var customQuestSheet: some View {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            VStack(spacing: 16) {
+                Text("CUSTOM QUEST")
+                    .font(Theme.titleFont(size: 20)).foregroundColor(Theme.neonCyan)
+                TextField("Quest title", text: $customTitle)
+                    .padding().background(Theme.card).cornerRadius(8).foregroundColor(Theme.text)
+                Picker("Difficulty", selection: $customDifficulty) {
+                    ForEach([Difficulty.e, .d, .c, .b, .a], id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Picker("Stat", selection: $customStat) {
+                    ForEach(["strength", "intelligence", "discipline", "charisma", "wealth", "mind"], id: \.self) {
+                        Text($0.capitalized).tag($0)
+                    }
+                }
+                .pickerStyle(.menu).tint(Theme.neonCyan)
+                Button {
+                    let t = customTitle.trimmingCharacters(in: .whitespaces)
+                    guard !t.isEmpty else { return }
+                    Task {
+                        await supabase.createCustomQuest(title: t, difficulty: customDifficulty, statReward: customStat)
+                        showCustom = false
+                        customTitle = ""
+                    }
+                } label: {
+                    Text("Add quest").bold()
+                        .frame(maxWidth: .infinity).padding()
+                        .background(Theme.neonCyan).foregroundColor(Theme.background).cornerRadius(10)
+                }
+                .disabled(customTitle.trimmingCharacters(in: .whitespaces).isEmpty)
+                Button("Cancel") { showCustom = false }
+                    .foregroundColor(Theme.subtext)
+            }
+            .padding(24)
         }
     }
 
