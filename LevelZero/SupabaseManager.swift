@@ -106,6 +106,7 @@ class SupabaseManager: ObservableObject {
     func signUp(email: String, password: String) async throws -> Bool {
         guard let client else { throw AuthError.notConfigured }
         let response = try await client.auth.signUp(email: email, password: password)
+        Analytics.log("user_registered")
         switch response {
         case .session: return true
         case .user: return false
@@ -210,6 +211,7 @@ class SupabaseManager: ObservableObject {
             self.needsAvatar = true
             self.lifeClass = draft.lifeClass
         }
+        Analytics.log("onboarding_completed")
     }
 
     // MARK: - Avatar (#5)
@@ -359,6 +361,7 @@ class SupabaseManager: ObservableObject {
             UserQuestInsert(user_id: uid.uuidString, quest_id: $0.id, assigned_date: today, status: "active")
         }
         try await client.from("user_quests").insert(inserts).execute()
+        Analytics.log("quest_generated", ["count": "\(inserts.count)"])
     }
 
     private static func seed(uid: UUID, day: String) -> UInt64 {
@@ -418,6 +421,10 @@ class SupabaseManager: ObservableObject {
             let flash = ranked ? "RANK UP \(result.state.rank.rawValue)!  +\(reward.xp) XP"
                 : (leveled ? "LEVEL \(result.state.level)!  +\(reward.xp) XP" : "+\(reward.xp) XP")
 
+            Analytics.log("quest_completed", ["difficulty": difficulty])
+            if leveled { Analytics.log("level_up", ["level": "\(result.state.level)"]) }
+            if ranked { Analytics.log("rank_up", ["rank": result.state.rank.rawValue]) }
+
             await loadProfileStatus()
             await loadOrAssignTodaysQuests()
             if ranked {
@@ -463,6 +470,7 @@ class SupabaseManager: ObservableObject {
             try await client.from("proof_submissions").insert(ProofInsert(
                 user_quest_id: id.uuidString, proof_type: "photo", proof_url: path
             )).execute()
+            Analytics.log("proof_uploaded")
             await completeQuest(id: id, difficulty: difficulty, statReward: statReward, proofAttached: true)
         } catch {}
     }
@@ -595,6 +603,7 @@ class SupabaseManager: ObservableObject {
         try await client.from("user_weekly_bosses").insert(BossInsert(
             user_id: uid.uuidString, boss_id: chosen.id.uuidString, week_start_date: week, status: "active"
         )).execute()
+        Analytics.log("weekly_boss_started")
     }
 
     /// Check off one boss requirement (HP bar depletes).
@@ -638,9 +647,11 @@ class SupabaseManager: ObservableObject {
             let bossRanked = res.events.contains { if case .rankedUp = $0 { return true } else { return false } }
             await loadProfileStatus()
             await loadOrSpawnWeeklyBoss()
+            Analytics.log("weekly_boss_completed")
             if bossRanked {
                 Task { await self.regenerateAvatarForCurrentRank() }
                 NotificationManager.shared.notifyRankUp(rankCode)
+                Analytics.log("rank_up", ["rank": rankCode])
             }
             await MainActor.run { self.rewardFlash = "BOSS DEFEATED!  +\(reward.xp) XP" }
             try? await Task.sleep(nanoseconds: 2_500_000_000)
@@ -761,6 +772,7 @@ class SupabaseManager: ObservableObject {
 
         if RecoveryDetector.evaluate(lastActiveAt: last, now: now) == .inactive {
             try? await client.from("profiles").update(["current_streak": 0]).eq("id", value: uid.uuidString).execute()
+            Analytics.log("user_inactive_detected")
             await MainActor.run { self.needsRecovery = true; self.streak = 0 }
             return
         }
@@ -787,6 +799,7 @@ class SupabaseManager: ObservableObject {
             try await client.from("profiles").update(["rank": res.state.rank.rawValue]).eq("id", value: uid.uuidString).execute()
             try await client.from("profiles").update(["last_active_at": iso]).eq("id", value: uid.uuidString).execute()
             await loadProfileStatus()
+            Analytics.log("recovery_quest_completed")
             await MainActor.run {
                 self.needsRecovery = false
                 self.rewardFlash = "Welcome back, Hunter! +50 XP"
