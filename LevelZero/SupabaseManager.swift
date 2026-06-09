@@ -420,7 +420,10 @@ class SupabaseManager: ObservableObject {
 
             await loadProfileStatus()
             await loadOrAssignTodaysQuests()
-            if ranked { Task { await self.regenerateAvatarForCurrentRank() } }
+            if ranked {
+                Task { await self.regenerateAvatarForCurrentRank() }
+                NotificationManager.shared.notifyRankUp(rankCode)
+            }
             await MainActor.run { self.rewardFlash = flash }
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             await MainActor.run { self.rewardFlash = nil }
@@ -635,7 +638,10 @@ class SupabaseManager: ObservableObject {
             let bossRanked = res.events.contains { if case .rankedUp = $0 { return true } else { return false } }
             await loadProfileStatus()
             await loadOrSpawnWeeklyBoss()
-            if bossRanked { Task { await self.regenerateAvatarForCurrentRank() } }
+            if bossRanked {
+                Task { await self.regenerateAvatarForCurrentRank() }
+                NotificationManager.shared.notifyRankUp(rankCode)
+            }
             await MainActor.run { self.rewardFlash = "BOSS DEFEATED!  +\(reward.xp) XP" }
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             await MainActor.run { self.rewardFlash = nil }

@@ -22,6 +22,8 @@ struct RootGate: View {
             supa.observeAuth()
             await supa.refreshSession()
             await supa.loadProfileStatus()
+            await NotificationManager.shared.requestAuthorization()
+            NotificationManager.shared.reschedule()
         }
     }
 }

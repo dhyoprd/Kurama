@@ -4,6 +4,7 @@ import LevelZeroCore
 
 struct ProfileView: View {
     @StateObject private var supabase = SupabaseManager.shared
+    @State private var showNotifSettings = false
 
     var body: some View {
         ZStack {
@@ -92,7 +93,10 @@ struct ProfileView: View {
                     // App settings / account info
                     VStack(spacing: 1) {
                         ProfileSettingRow(title: "Account Settings", icon: "person.crop.circle")
-                        ProfileSettingRow(title: "Notifications Configuration", icon: "bell")
+                        Button { showNotifSettings = true } label: {
+                            ProfileSettingRow(title: "Notifications Configuration", icon: "bell")
+                        }
+                        .buttonStyle(.plain)
                         ProfileSettingRow(title: "Intensity Level Options", icon: "slider.horizontal.3")
                     }
                     .cornerRadius(12)
@@ -102,6 +106,7 @@ struct ProfileView: View {
                 .padding(.vertical)
             }
         }
+        .sheet(isPresented: $showNotifSettings) { NotificationSettingsView() }
         .task {
             await supabase.loadProfileStatus()
             await supabase.loadTrophies()
@@ -191,6 +196,46 @@ struct RaidBadge {
     let desc: String
     let icon: String
     let color: Color
+}
+
+/// Notifications settings (#22): toggle + morning reminder time.
+struct NotificationSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var enabled = NotificationManager.shared.enabled
+    @State private var time: Date = {
+        var dc = DateComponents()
+        dc.hour = NotificationManager.shared.reminderHour
+        dc.minute = NotificationManager.shared.reminderMinute
+        return Calendar.current.date(from: dc) ?? Date()
+    }()
+
+    var body: some View {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            VStack(spacing: 20) {
+                Text("NOTIFICATIONS")
+                    .font(Theme.titleFont(size: 20)).foregroundColor(Theme.neonCyan)
+                Toggle("Enable reminders", isOn: $enabled)
+                    .tint(Theme.neonCyan).foregroundColor(Theme.text)
+                DatePicker("Morning reminder", selection: $time, displayedComponents: .hourAndMinute)
+                    .foregroundColor(Theme.text)
+                    .disabled(!enabled)
+                Spacer()
+                Button {
+                    let comps = Calendar.current.dateComponents([.hour, .minute], from: time)
+                    NotificationManager.shared.reminderHour = comps.hour ?? 9
+                    NotificationManager.shared.reminderMinute = comps.minute ?? 0
+                    NotificationManager.shared.enabled = enabled
+                    dismiss()
+                } label: {
+                    Text("Save").bold()
+                        .frame(maxWidth: .infinity).padding()
+                        .background(Theme.neonCyan).foregroundColor(Theme.background).cornerRadius(10)
+                }
+            }
+            .padding(24)
+        }
+    }
 }
 
 struct ProfileSettingRow: View {
