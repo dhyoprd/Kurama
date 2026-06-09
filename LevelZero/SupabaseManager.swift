@@ -265,6 +265,8 @@ class SupabaseManager: ObservableObject {
         let id: UUID
         let status: String
         let custom_title: String?
+        let custom_difficulty: String?
+        let custom_stat_reward: String?
         let quests: QuestTitleRow?
     }
     private struct UserQuestInsert: Encodable {
@@ -297,8 +299,8 @@ class SupabaseManager: ObservableObject {
                 DailyQuestVM(
                     id: $0.id,
                     title: $0.quests?.title ?? $0.custom_title ?? "Quest",
-                    difficulty: $0.quests?.difficulty ?? "E",
-                    statReward: $0.quests?.stat_reward ?? "discipline",
+                    difficulty: $0.quests?.difficulty ?? $0.custom_difficulty ?? "E",
+                    statReward: $0.quests?.stat_reward ?? $0.custom_stat_reward ?? "discipline",
                     status: $0.status
                 )
             }
@@ -311,7 +313,7 @@ class SupabaseManager: ObservableObject {
     private func fetchTodayQuests(_ client: SupabaseClient, uid: UUID, today: String) async throws -> [TodayQuestRow] {
         try await client
             .from("user_quests")
-            .select("id,status,custom_title,quests(title,difficulty,stat_reward)")
+            .select("id,status,custom_title,custom_difficulty,custom_stat_reward,quests(title,difficulty,stat_reward)")
             .eq("user_id", value: uid.uuidString)
             .eq("assigned_date", value: today)
             .execute()
@@ -420,6 +422,29 @@ class SupabaseManager: ObservableObject {
                 .eq("id", value: id.uuidString)
                 .eq("status", value: "active")
                 .execute()
+            await loadOrAssignTodaysQuests()
+        } catch {}
+    }
+
+    /// Create a user-authored quest for today; completes via the same reward path.
+    func createCustomQuest(title: String, difficulty: Difficulty, statReward: String) async {
+        guard let client else { return }
+        guard let uid = try? await client.auth.session.user.id else { return }
+        struct CustomInsert: Encodable {
+            let user_id: String
+            let custom_title: String
+            let custom_difficulty: String
+            let custom_stat_reward: String
+            let assigned_date: String
+            let status: String
+        }
+        let today = Self.dayFormatter.string(from: Date())
+        do {
+            try await client.from("user_quests").insert(CustomInsert(
+                user_id: uid.uuidString, custom_title: title,
+                custom_difficulty: difficulty.rawValue, custom_stat_reward: statReward,
+                assigned_date: today, status: "active"
+            )).execute()
             await loadOrAssignTodaysQuests()
         } catch {}
     }
