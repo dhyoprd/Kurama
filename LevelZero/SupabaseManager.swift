@@ -411,6 +411,19 @@ class SupabaseManager: ObservableObject {
         }
     }
 
+    /// Skip an active quest with a reason (no XP awarded).
+    func skipQuest(id: UUID, reason: String) async {
+        guard let client else { return }
+        do {
+            try await client.from("user_quests")
+                .update(["status": "skipped", "skip_reason": reason])
+                .eq("id", value: id.uuidString)
+                .eq("status", value: "active")
+                .execute()
+            await loadOrAssignTodaysQuests()
+        } catch {}
+    }
+
     // MARK: - Weekly boss (#12)
 
     struct BossVM: Equatable {

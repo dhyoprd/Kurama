@@ -323,10 +323,20 @@ struct DashboardView: View {
                                 .font(Theme.bodyFont(size: 13))
                                 .foregroundColor(Theme.subtext)
                         } else {
+                            if supabase.todaysQuests.filter({ $0.status == "skipped" }).count >= 2 {
+                                Text("Skipping a lot? Consider lowering your intensity in Settings.")
+                                    .font(Theme.bodyFont(size: 12))
+                                    .foregroundColor(Theme.gold)
+                            }
+                            Text("Long-press a quest to skip it.")
+                                .font(Theme.bodyFont(size: 11))
+                                .foregroundColor(Theme.subtext)
                             ForEach(supabase.todaysQuests) { quest in
                                 let done = quest.status == "completed"
+                                let skipped = quest.status == "skipped"
+                                let inactive = done || skipped
                                 Button {
-                                    guard !done else { return }
+                                    guard !inactive else { return }
                                     Task {
                                         await supabase.completeQuest(
                                             id: quest.id,
@@ -340,14 +350,14 @@ struct DashboardView: View {
                                             .font(Theme.statsFont(size: 12))
                                             .foregroundColor(Theme.background)
                                             .frame(width: 26, height: 26)
-                                            .background(done ? Theme.subtext : Theme.neonCyan)
+                                            .background(inactive ? Theme.subtext : Theme.neonCyan)
                                             .clipShape(Circle())
                                         Text(quest.title)
                                             .font(Theme.bodyFont(size: 15))
-                                            .foregroundColor(done ? Theme.subtext : Theme.text)
-                                            .strikethrough(done)
+                                            .foregroundColor(inactive ? Theme.subtext : Theme.text)
+                                            .strikethrough(inactive)
                                         Spacer()
-                                        Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                                        Image(systemName: done ? "checkmark.circle.fill" : (skipped ? "xmark.circle" : "circle"))
                                             .foregroundColor(done ? Theme.neonCyan : Theme.subtext)
                                     }
                                     .padding()
@@ -355,7 +365,14 @@ struct DashboardView: View {
                                     .cornerRadius(10)
                                 }
                                 .buttonStyle(.plain)
-                                .disabled(done)
+                                .disabled(inactive)
+                                .contextMenu {
+                                    if !inactive {
+                                        Button("Skip: Not today") { Task { await supabase.skipQuest(id: quest.id, reason: "not today") } }
+                                        Button("Skip: Too hard") { Task { await supabase.skipQuest(id: quest.id, reason: "too hard") } }
+                                        Button("Skip: No time") { Task { await supabase.skipQuest(id: quest.id, reason: "no time") } }
+                                    }
+                                }
                             }
                         }
                         } // end recovery else
