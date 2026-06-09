@@ -19,6 +19,7 @@ class SupabaseManager: ObservableObject {
     @Published var level = 1
     @Published var xp = 0
     @Published var rankCode = "E"
+    @Published var username = "Hunter"
     @Published var stats: [String: Int] = [:]
     @Published var rewardFlash: String?
     @Published var boss: BossVM?
@@ -125,6 +126,7 @@ class SupabaseManager: ObservableObject {
 
     private struct ProfileStatusRow: Decodable {
         let id: UUID
+        let username: String
         let avatar_url: String?
         let life_class: String
         let intensity: String
@@ -161,7 +163,7 @@ class SupabaseManager: ObservableObject {
         do {
             let rows: [ProfileStatusRow] = try await client
                 .from("profiles")
-                .select("id,avatar_url,life_class,intensity,level,xp,rank,strength,intelligence,discipline,charisma,wealth,mind,last_active_at,current_streak")
+                .select("id,username,avatar_url,life_class,intensity,level,xp,rank,strength,intelligence,discipline,charisma,wealth,mind,last_active_at,current_streak")
                 .eq("id", value: uid.uuidString)
                 .execute()
                 .value
@@ -181,6 +183,7 @@ class SupabaseManager: ObservableObject {
                      "wealth": $0.wealth, "mind": $0.mind]
                 } ?? [:]
                 self.streak = row?.current_streak ?? 0
+                self.username = row?.username ?? "Hunter"
                 self.lastActiveAt = row?.last_active_at.flatMap { Self.parseTimestamp($0) }
             }
         } catch {
