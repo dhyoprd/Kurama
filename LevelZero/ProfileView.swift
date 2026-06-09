@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import LevelZeroCore
 
 struct ProfileView: View {
@@ -18,7 +19,7 @@ struct ProfileView: View {
                             .foregroundColor(Theme.neonCyan)
                             .padding(.top, 10)
                         
-                        Text("JinWoo")
+                        Text(supabase.username)
                             .font(Theme.titleFont(size: 22))
                             .foregroundColor(.white)
                         
@@ -107,14 +108,81 @@ struct ProfileView: View {
         }
     }
 
+    private var statsForCard: [(String, Int)] {
+        [
+            ("STR", supabase.stats["strength"] ?? 10), ("INT", supabase.stats["intelligence"] ?? 10),
+            ("DIS", supabase.stats["discipline"] ?? 10), ("CHA", supabase.stats["charisma"] ?? 10),
+            ("WEA", supabase.stats["wealth"] ?? 10), ("MND", supabase.stats["mind"] ?? 10),
+        ]
+    }
+
+    @MainActor
     private func shareProfileCard() {
-        // Mock share behavior
-        let activityVC = UIActivityViewController(activityItems: ["Level Zero Profile - JinWoo. Level: 14, Rank: D-Rank. Stats: STR 45, INT 18, DIS 30."], applicationActivities: nil)
-        
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootVC = windowScene.windows.first?.rootViewController {
-            rootVC.present(activityVC, animated: true, completion: nil)
+        Task {
+            // Pre-load the avatar so it appears in the rendered card.
+            var avatarImage: UIImage?
+            if let url = supabase.avatarURL, let (data, _) = try? await URLSession.shared.data(from: url) {
+                avatarImage = UIImage(data: data)
+            }
+            let card = ProfileCardView(
+                name: supabase.username, rank: supabase.rankCode, level: supabase.level,
+                xp: supabase.xp, stats: statsForCard, avatar: avatarImage
+            )
+            let renderer = ImageRenderer(content: card)
+            renderer.scale = 3
+            guard let image = renderer.uiImage else { return }
+            let activityVC = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let root = scene.windows.first?.rootViewController {
+                root.present(activityVC, animated: true)
+            }
         }
+    }
+}
+
+/// Shareable RPG status card (#21) — no sensitive data (no email).
+struct ProfileCardView: View {
+    let name: String
+    let rank: String
+    let level: Int
+    let xp: Int
+    let stats: [(String, Int)]
+    let avatar: UIImage?
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Text("LEVEL ZERO")
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundColor(Theme.neonCyan)
+            Group {
+                if let avatar {
+                    Image(uiImage: avatar).resizable().scaledToFill()
+                } else {
+                    Image(systemName: "figure.stand").resizable().scaledToFit().padding(24)
+                        .foregroundColor(Theme.neonCyan)
+                }
+            }
+            .frame(width: 120, height: 120)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Theme.neonCyan, lineWidth: 2))
+
+            Text(name).font(.system(size: 24, weight: .bold)).foregroundColor(.white)
+            HStack(spacing: 8) {
+                Text("LV \(level)").font(.system(size: 14, weight: .bold, design: .monospaced)).foregroundColor(.white)
+                Text("\(rank)-RANK")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundColor(Theme.background)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Theme.neonCyan).cornerRadius(6)
+            }
+            RadarChartView(stats: stats).frame(width: 200, height: 200)
+            Text("\(xp) / \(level * 100) XP")
+                .font(.system(size: 12, design: .monospaced)).foregroundColor(Theme.subtext)
+        }
+        .padding(28)
+        .frame(width: 340)
+        .background(Theme.background)
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.neonCyan.opacity(0.5), lineWidth: 2))
     }
 }
 
