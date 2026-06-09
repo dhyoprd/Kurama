@@ -148,6 +148,7 @@ struct ProfileView: View {
             if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                let root = scene.windows.first?.rootViewController {
                 root.present(activityVC, animated: true)
+                Analytics.log("profile_card_shared")
             }
         }
     }
