@@ -414,6 +414,7 @@ class SupabaseManager: ObservableObject {
 
     struct BossVM: Equatable {
         let rowId: UUID
+        let currentBossId: UUID
         let title: String
         let description: String
         let progress: Int
@@ -423,6 +424,8 @@ class SupabaseManager: ObservableObject {
         let xpReward: Int
         let statRewards: [String: Int]
         let deadline: Date
+        let weekStart: Date
+        let rerollsUsed: Int
     }
 
     private struct BossMaster: Decodable {
@@ -439,8 +442,10 @@ class SupabaseManager: ObservableObject {
     }
     private struct BossJoin: Decodable {
         let id: UUID
+        let boss_id: UUID
         let status: String
         let progress: Int
+        let rerolls_used: Int
         let week_start_date: String
         let weekly_bosses: BossEmbed?
     }
@@ -481,9 +486,10 @@ class SupabaseManager: ObservableObject {
                 status = "failed"
             }
             let vm = BossVM(
-                rowId: row.id, title: m.title, description: m.description,
+                rowId: row.id, currentBossId: row.boss_id, title: m.title, description: m.description,
                 progress: row.progress, required: m.required_count, status: status,
-                badge: m.badge_reward, xpReward: m.xp_reward, statRewards: m.stat_rewards, deadline: deadline
+                badge: m.badge_reward, xpReward: m.xp_reward, statRewards: m.stat_rewards,
+                deadline: deadline, weekStart: weekStart, rerollsUsed: row.rerolls_used
             )
             await MainActor.run { self.boss = vm }
         } catch {
@@ -493,7 +499,7 @@ class SupabaseManager: ObservableObject {
 
     private func fetchBoss(_ client: SupabaseClient, uid: UUID, week: String) async throws -> [BossJoin] {
         try await client.from("user_weekly_bosses")
-            .select("id,status,progress,week_start_date,weekly_bosses(title,description,required_count,xp_reward,stat_rewards,badge_reward)")
+            .select("id,boss_id,status,progress,rerolls_used,week_start_date,weekly_bosses(title,description,required_count,xp_reward,stat_rewards,badge_reward)")
             .eq("user_id", value: uid.uuidString)
             .eq("week_start_date", value: week)
             .execute().value
@@ -554,6 +560,29 @@ class SupabaseManager: ObservableObject {
             await MainActor.run { self.rewardFlash = "BOSS DEFEATED!  +\(reward.xp) XP" }
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             await MainActor.run { self.rewardFlash = nil }
+        } catch {}
+    }
+
+    /// Reroll the weekly boss (<= once, before Wednesday) into a different matched boss; resets progress.
+    func rerollBoss() async {
+        guard let client, let b = boss, b.status == "active" else { return }
+        guard let uid = try? await client.auth.session.user.id else { return }
+        _ = uid
+        let state = BossState(status: .active, weekStart: b.weekStart, rerollsUsed: b.rerollsUsed)
+        guard WeeklyBossLifecycle.canReroll(state, now: Date()) else { return }
+        do {
+            let pool: [BossMaster] = try await client.from("weekly_bosses").select("id,life_class").execute().value
+            let myClass = lifeClass?.rawValue
+            let matched = pool.filter { $0.life_class == myClass }
+            let general = pool.filter { $0.life_class == nil }
+            let base = matched.isEmpty ? general : matched
+            let others = base.filter { $0.id != b.currentBossId }
+            guard let chosen = (others.isEmpty ? base : others).first else { return }
+            try await client.from("user_weekly_bosses")
+                .update(["boss_id": chosen.id.uuidString]).eq("id", value: b.rowId.uuidString).execute()
+            try await client.from("user_weekly_bosses")
+                .update(["progress": 0, "rerolls_used": b.rerollsUsed + 1]).eq("id", value: b.rowId.uuidString).execute()
+            await loadOrSpawnWeeklyBoss()
         } catch {}
     }
 

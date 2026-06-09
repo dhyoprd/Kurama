@@ -1,4 +1,5 @@
 import SwiftUI
+import LevelZeroCore
 
 /// Weekly Boss Raid Room (#12): HP bar depletes as requirements are checked off;
 /// conquer before the Sunday deadline for the reward.
@@ -116,6 +117,20 @@ struct BossRaidView: View {
                             .cornerRadius(10)
                     }
                     .disabled(!ready)
+
+                    if WeeklyBossLifecycle.canReroll(
+                        BossState(status: .active, weekStart: boss.weekStart, rerollsUsed: boss.rerollsUsed),
+                        now: Date()
+                    ) {
+                        Button {
+                            Task { await supabase.rerollBoss() }
+                        } label: {
+                            Text("Reroll boss (1 left, until Wed)")
+                                .font(Theme.bodyFont(size: 13))
+                                .foregroundColor(Theme.subtext)
+                                .underline()
+                        }
+                    }
                 }
             }
         }
