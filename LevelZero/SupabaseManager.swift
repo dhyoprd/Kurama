@@ -828,4 +828,34 @@ class SupabaseManager: ObservableObject {
             await MainActor.run { self.trophies = [] }
         }
     }
+
+    // MARK: - Account & settings (#23)
+
+    func updateIntensity(_ intensity: Intensity) async {
+        guard let client, let uid = try? await client.auth.session.user.id else { return }
+        try? await client.from("profiles").update(["intensity": intensity.rawValue]).eq("id", value: uid.uuidString).execute()
+        await MainActor.run { self.intensity = intensity }
+    }
+
+    func updateGoals(_ goals: [MainGoal]) async {
+        guard let client, let uid = try? await client.auth.session.user.id else { return }
+        struct GoalsUpdate: Encodable { let main_goals: [String] }
+        try? await client.from("profiles").update(GoalsUpdate(main_goals: goals.map(\.dbValue))).eq("id", value: uid.uuidString).execute()
+    }
+
+    func sendPasswordReset() async -> Bool {
+        guard let client, let email = (try? await client.auth.session)?.user.email else { return false }
+        do { try await client.auth.resetPasswordForEmail(email); return true } catch { return false }
+    }
+
+    func deleteAccount() async {
+        guard let client else { return }
+        _ = try? await client.functions.invoke("delete-account")
+        try? await client.auth.signOut()
+        await MainActor.run {
+            self.isAuthenticated = false
+            self.hasProfile = false
+            self.needsAvatar = false
+        }
+    }
 }

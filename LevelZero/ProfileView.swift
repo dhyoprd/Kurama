@@ -5,6 +5,7 @@ import LevelZeroCore
 struct ProfileView: View {
     @StateObject private var supabase = SupabaseManager.shared
     @State private var showNotifSettings = false
+    @State private var showSettings = false
 
     var body: some View {
         ZStack {
@@ -92,12 +93,18 @@ struct ProfileView: View {
                     
                     // App settings / account info
                     VStack(spacing: 1) {
-                        ProfileSettingRow(title: "Account Settings", icon: "person.crop.circle")
+                        Button { showSettings = true } label: {
+                            ProfileSettingRow(title: "Account Settings", icon: "person.crop.circle")
+                        }
+                        .buttonStyle(.plain)
                         Button { showNotifSettings = true } label: {
                             ProfileSettingRow(title: "Notifications Configuration", icon: "bell")
                         }
                         .buttonStyle(.plain)
-                        ProfileSettingRow(title: "Intensity Level Options", icon: "slider.horizontal.3")
+                        Button { showSettings = true } label: {
+                            ProfileSettingRow(title: "Intensity Level Options", icon: "slider.horizontal.3")
+                        }
+                        .buttonStyle(.plain)
                     }
                     .cornerRadius(12)
                     .padding(.horizontal)
@@ -107,6 +114,7 @@ struct ProfileView: View {
             }
         }
         .sheet(isPresented: $showNotifSettings) { NotificationSettingsView() }
+        .sheet(isPresented: $showSettings) { SettingsView() }
         .task {
             await supabase.loadProfileStatus()
             await supabase.loadTrophies()
@@ -196,6 +204,82 @@ struct RaidBadge {
     let desc: String
     let icon: String
     let color: Color
+}
+
+/// Account & settings (#23): change intensity/goals, password reset, delete account.
+struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var supabase = SupabaseManager.shared
+    @State private var intensity: Intensity = .normal
+    @State private var goals: Set<MainGoal> = []
+    @State private var message: String?
+    @State private var showDeleteConfirm = false
+
+    var body: some View {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("ACCOUNT & SETTINGS")
+                        .font(Theme.titleFont(size: 20)).foregroundColor(Theme.neonCyan)
+
+                    Text("Intensity").font(Theme.statsFont(size: 12)).foregroundColor(Theme.subtext)
+                    Picker("", selection: $intensity) {
+                        ForEach(Intensity.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text("Main goals").font(Theme.statsFont(size: 12)).foregroundColor(Theme.subtext)
+                    ForEach(MainGoal.allCases, id: \.self) { g in
+                        Button { if goals.contains(g) { goals.remove(g) } else { goals.insert(g) } } label: {
+                            HStack {
+                                Text(g.displayName).foregroundColor(Theme.text)
+                                Spacer()
+                                if goals.contains(g) { Image(systemName: "checkmark.circle.fill").foregroundColor(Theme.neonCyan) }
+                            }
+                            .padding().background(Theme.card).cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        Task {
+                            await supabase.updateIntensity(intensity)
+                            if !goals.isEmpty { await supabase.updateGoals(Array(goals)) }
+                            message = "Saved."
+                        }
+                    } label: {
+                        Text("Save changes").bold()
+                            .frame(maxWidth: .infinity).padding()
+                            .background(Theme.neonCyan).foregroundColor(Theme.background).cornerRadius(10)
+                    }
+
+                    Button {
+                        Task { message = (await supabase.sendPasswordReset()) ? "Password reset email sent." : "Could not send reset email." }
+                    } label: { Text("Send password reset email").foregroundColor(Theme.neonCyan) }
+
+                    Button { Task { try? await supabase.signOut() } } label: {
+                        Text("Sign out").foregroundColor(Theme.gold)
+                    }
+
+                    Button(role: .destructive) { showDeleteConfirm = true } label: {
+                        Text("Delete account").foregroundColor(.red)
+                    }
+
+                    if let message {
+                        Text(message).font(.caption).foregroundColor(Theme.subtext)
+                    }
+                }
+                .padding(24)
+            }
+        }
+        .onAppear { intensity = supabase.intensity }
+        .confirmationDialog("Delete your account and all data? This cannot be undone.",
+                            isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete everything", role: .destructive) { Task { await supabase.deleteAccount(); dismiss() } }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
 }
 
 /// Notifications settings (#22): toggle + morning reminder time.
