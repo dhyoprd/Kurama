@@ -236,6 +236,18 @@ class SupabaseManager: ObservableObject {
         await loadProfileStatus()
     }
 
+    /// Regenerate the avatar to its evolved form for the current rank + top stat (#20).
+    func regenerateAvatarForCurrentRank() async {
+        let s = Stats(
+            strength: stats["strength"] ?? 10, intelligence: stats["intelligence"] ?? 10,
+            discipline: stats["discipline"] ?? 10, charisma: stats["charisma"] ?? 10,
+            wealth: stats["wealth"] ?? 10, mind: stats["mind"] ?? 10
+        )
+        let top = AvatarPromptSelector.topStat(of: s)
+        let rank = Rank(rawValue: rankCode) ?? .e
+        try? await generateAvatar(prompt: AvatarPromptSelector.prompt(rank: rank, topStat: top))
+    }
+
     /// Proceed without an avatar (failure path must not block the app).
     func skipAvatar() {
         Task { @MainActor in self.needsAvatar = false }
@@ -405,6 +417,7 @@ class SupabaseManager: ObservableObject {
 
             await loadProfileStatus()
             await loadOrAssignTodaysQuests()
+            if ranked { Task { await self.regenerateAvatarForCurrentRank() } }
             await MainActor.run { self.rewardFlash = flash }
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             await MainActor.run { self.rewardFlash = nil }
@@ -616,8 +629,10 @@ class SupabaseManager: ObservableObject {
             try await client.from("profiles").update(update).eq("id", value: uid.uuidString).execute()
             try await client.from("profiles").update(["rank": res.state.rank.rawValue]).eq("id", value: uid.uuidString).execute()
 
+            let bossRanked = res.events.contains { if case .rankedUp = $0 { return true } else { return false } }
             await loadProfileStatus()
             await loadOrSpawnWeeklyBoss()
+            if bossRanked { Task { await self.regenerateAvatarForCurrentRank() } }
             await MainActor.run { self.rewardFlash = "BOSS DEFEATED!  +\(reward.xp) XP" }
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             await MainActor.run { self.rewardFlash = nil }
