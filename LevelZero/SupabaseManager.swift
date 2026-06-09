@@ -365,11 +365,11 @@ class SupabaseManager: ObservableObject {
     private struct IDRow: Decodable { let id: UUID }
 
     /// Complete a quest: award XP/stat via the cores, persist, prevent double-claim.
-    func completeQuest(id: UUID, difficulty: String, statReward: String) async {
+    func completeQuest(id: UUID, difficulty: String, statReward: String, proofAttached: Bool = false) async {
         guard let client else { return }
         guard let uid = try? await client.auth.session.user.id else { return }
         guard let diff = Difficulty(rawValue: difficulty) else { return }
-        let reward = QuestRewardCalculator.reward(difficulty: diff, proofAttached: false)
+        let reward = QuestRewardCalculator.reward(difficulty: diff, proofAttached: proofAttached)
         do {
             // Claim only if still active (atomic guard against double XP).
             let claimed: [IDRow] = try await client
@@ -423,6 +423,28 @@ class SupabaseManager: ObservableObject {
                 .eq("status", value: "active")
                 .execute()
             await loadOrAssignTodaysQuests()
+        } catch {}
+    }
+
+    /// Upload a photo proof for a quest, then complete it with the +20 XP bonus.
+    func completeQuestWithProof(id: UUID, difficulty: String, statReward: String, imageData: Data) async {
+        guard let client else { return }
+        guard imageData.count <= 5_000_000 else {
+            await MainActor.run { self.rewardFlash = "Proof too large (max 5MB)" }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await MainActor.run { self.rewardFlash = nil }
+            return
+        }
+        struct ProofInsert: Encodable { let user_quest_id: String; let proof_type: String; let proof_url: String }
+        let path = "\(id.uuidString).jpg"
+        do {
+            try await client.storage.from("proofs").upload(
+                path, data: imageData, options: FileOptions(contentType: "image/jpeg", upsert: true)
+            )
+            try await client.from("proof_submissions").insert(ProofInsert(
+                user_quest_id: id.uuidString, proof_type: "photo", proof_url: path
+            )).execute()
+            await completeQuest(id: id, difficulty: difficulty, statReward: statReward, proofAttached: true)
         } catch {}
     }
 
