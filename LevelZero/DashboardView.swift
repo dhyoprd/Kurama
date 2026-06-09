@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import LevelZeroCore
 
 struct DashboardView: View {
@@ -14,6 +15,11 @@ struct DashboardView: View {
     @State private var customTitle = ""
     @State private var customDifficulty: Difficulty = .e
     @State private var customStat = "discipline"
+
+    // Proof submission (#11)
+    @State private var proofTarget: SupabaseManager.DailyQuestVM?
+    @State private var proofItem: PhotosPickerItem?
+    @State private var showProofPicker = false
     
     // Stats mapping from LevelZeroCore
     // Real stats from the profile (#8), in canonical order.
@@ -377,6 +383,7 @@ struct DashboardView: View {
                                         Button("Skip: Not today") { Task { await supabase.skipQuest(id: quest.id, reason: "not today") } }
                                         Button("Skip: Too hard") { Task { await supabase.skipQuest(id: quest.id, reason: "too hard") } }
                                         Button("Skip: No time") { Task { await supabase.skipQuest(id: quest.id, reason: "no time") } }
+                                        Button("Complete with photo (+20 XP)") { proofTarget = quest; showProofPicker = true }
                                     }
                                 }
                             }
@@ -415,6 +422,17 @@ struct DashboardView: View {
         }
         .animation(.spring(), value: supabase.rewardFlash)
         .sheet(isPresented: $showCustom) { customQuestSheet }
+        .photosPicker(isPresented: $showProofPicker, selection: $proofItem, matching: .images)
+        .onChange(of: proofItem) { newItem in
+            Task {
+                guard let newItem,
+                      let data = try? await newItem.loadTransferable(type: Data.self),
+                      let q = proofTarget else { return }
+                await supabase.completeQuestWithProof(id: q.id, difficulty: q.difficulty, statReward: q.statReward, imageData: data)
+                proofTarget = nil
+                proofItem = nil
+            }
+        }
         .task {
             await supabase.loadProfileStatus()
             await supabase.refreshActivity()
