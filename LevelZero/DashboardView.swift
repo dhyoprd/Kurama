@@ -7,8 +7,8 @@ struct DashboardView: View {
     @State private var showingDialogue = false
     @State private var dialogueText = "Welcome back, Hunter. Tap me to check your condition."
     
-    // CoreMotion/Gyroscope simulation states
-    @State private var tiltOffset: CGFloat = 0
+    // CoreMotion gyroscope parallax (#19)
+    @StateObject private var motion = MotionManager()
 
     // Custom quest sheet (#10)
     @State private var showCustom = false
@@ -83,13 +83,9 @@ struct DashboardView: View {
                                     .blur(radius: 30)
                                     .frame(width: 200, height: 200)
                                 
-                                // Floating codes or magic dots
-                                ForEach(0..<15) { i in
-                                    Circle()
-                                        .fill(Theme.neonCyan)
-                                        .frame(width: CGFloat.random(in: 2...4), height: CGFloat.random(in: 2...4))
-                                        .offset(x: CGFloat.random(in: -80...80), y: CGFloat.random(in: -120...120))
-                                }
+                                // Per-class particle system (#19)
+                                LifeClassParticles(lifeClass: supabase.lifeClass, level: supabase.level)
+                                    .frame(width: 220, height: 260)
                             }
                             
                             // Mock Full Body Standing Novice Avatar
@@ -111,12 +107,9 @@ struct DashboardView: View {
                                     }
                                 }
                                 .frame(height: 160)
-                                .offset(x: tiltOffset) // Gyroscope simulation offset
-                                .onAppear {
-                                    withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-                                        tiltOffset = 5
-                                    }
-                                }
+                                .offset(x: motion.roll * 25, y: motion.pitch * 12)
+                                .rotation3DEffect(.degrees(motion.roll * 8), axis: (x: 0, y: 1, z: 0))
+                                .animation(.easeOut(duration: 0.15), value: motion.roll)
                                 Spacer()
                             }
                             .frame(height: 200)
@@ -434,10 +427,12 @@ struct DashboardView: View {
             }
         }
         .task {
+            motion.start()
             await supabase.loadProfileStatus()
             await supabase.refreshActivity()
             await supabase.loadOrAssignTodaysQuests()
         }
+        .onDisappear { motion.stop() }
     }
 
     private var customQuestSheet: some View {
