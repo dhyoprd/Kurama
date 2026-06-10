@@ -172,6 +172,7 @@ class SupabaseManager: ObservableObject {
             await MainActor.run {
                 self.hasProfile = row != nil
                 self.needsAvatar = row != nil && row?.avatar_url == nil
+                    && !UserDefaults.standard.bool(forKey: "avatar_skipped_\(uid.uuidString)")
                 self.lifeClass = row.flatMap { LifeClass(rawValue: $0.life_class) }
                 self.intensity = row.flatMap { Intensity(rawValue: $0.intensity) } ?? .normal
                 self.avatarURL = row?.avatar_url.flatMap { URL(string: $0) }
@@ -254,8 +255,14 @@ class SupabaseManager: ObservableObject {
     }
 
     /// Proceed without an avatar (failure path must not block the app).
+    /// Persists the choice so reloading the profile doesn't re-gate to the avatar screen.
     func skipAvatar() {
-        Task { @MainActor in self.needsAvatar = false }
+        Task {
+            if let client, let uid = try? await client.auth.session.user.id {
+                UserDefaults.standard.set(true, forKey: "avatar_skipped_\(uid.uuidString)")
+            }
+            await MainActor.run { self.needsAvatar = false }
+        }
     }
 
     // MARK: - Daily quests (#6)
